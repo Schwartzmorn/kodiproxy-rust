@@ -9,14 +9,14 @@ async-std = "1"
 async-trait = "0.1"
 cfg-if = "1"
 futures = "0.3"
-hyper = "0.13"
-quick-xml = { version = "0.19", features = [ "serialize" ] }
+hyper = "0.14"
+quick-xml = { version = "0.22", features = [ "serialize" ] }
 regex = "1"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
-mockall = "0.8"
+mockall = "0.9"
 url = "2"
-wiremock = "0.3"
+wiremock = "0.5"

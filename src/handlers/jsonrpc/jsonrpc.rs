@@ -343,7 +343,9 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")
-            .body(hyper::Body::from(r#"{"method":"A.Method"}"#))
+            .body(hyper::Body::from(
+                r#"{"method":"A.Method","params":{"akey":"a value"}}"#,
+            ))
             .unwrap();
 
         let (parts, body) = jrpc.handle(req).await.unwrap().into_parts();
