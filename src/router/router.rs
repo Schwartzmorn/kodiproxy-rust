@@ -29,15 +29,26 @@ impl Router {
         }
     }
 
-    pub fn add_handler(&mut self, handler: Box<dyn Handler>) {
-        self.handlers.push(handler)
+    pub fn add_handler(mut self, handler: Box<dyn Handler>) -> Self {
+        self.handlers.push(handler);
+        self
+    }
+
+    pub fn add_handlers<T>(mut self, handlers: T) -> Self
+    where
+        T: IntoIterator<Item = Box<dyn Handler>>,
+    {
+        for handler in handlers {
+            self.handlers.push(handler);
+        }
+        self
     }
 
     pub async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
-        // TODO improve when async closure are stable ?
+        // TODO improve this when async closure are supported
         match self.get_handler(&request) {
             Ok(handler) => {
                 // TODO improve timeout mechanism ?
@@ -62,6 +73,7 @@ impl Router {
         &self,
         request: &hyper::Request<hyper::Body>,
     ) -> Result<&Box<dyn Handler>, RouterError> {
+        log::info!("{:?} {:?}", request.method(), request.uri());
         let mut server_error = RouterError::NotFound;
         for handler in self.handlers.iter() {
             match handler.get_matcher().matches(request) {
@@ -74,6 +86,7 @@ impl Router {
     }
 
     fn error(error: RouterError) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
+        log::info!("Sending error response {:?}", &error);
         Ok(hyper::Response::builder()
             .status(match &error {
                 RouterError::ForwardingError(_) => 502,
@@ -123,9 +136,7 @@ mod tests {
             &self,
             _request: hyper::Request<hyper::Body>,
         ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
-            println!("sleeping");
             async_std::task::sleep(std::time::Duration::from_secs(self.wait)).await;
-            println!("slept");
             Ok(hyper::Response::builder()
                 .status(200)
                 .body(hyper::Body::from("a response"))
@@ -143,8 +154,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_routes() {
-        let mut router = super::Router::new();
-        router.add_handler(Box::new(MockHandler::new(0)));
+        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/jsonrpc", &hyper::Method::GET);
         let (parts, body) = router.handle(request).await.unwrap().into_parts();
@@ -157,8 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_404_when_no_handler() {
-        let mut router = super::Router::new();
-        router.add_handler(Box::new(MockHandler::new(0)));
+        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/not_found", &hyper::Method::GET);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();
@@ -168,8 +177,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_405() {
-        let mut router = super::Router::new();
-        router.add_handler(Box::new(MockHandler::new(0)));
+        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/jsonrpc", &hyper::Method::POST);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();
@@ -179,9 +187,8 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_504_when_handler_timeouts() {
-        let mut router = super::Router::new();
         // TODO speed up this test if timeout improves
-        router.add_handler(Box::new(MockHandler::new(6)));
+        let router = super::Router::new().add_handler(Box::new(MockHandler::new(6)));
 
         let request = get_request("/jsonrpc", &hyper::Method::GET);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();

@@ -1,3 +1,7 @@
+/// Result of a check made by a [Matcher]
+/// [Matcher::OK] means the the request can be handled
+/// [Matcher::UriOnly] means the request should have be handled, but the method is incorrect
+/// [Matcher::KO] means the request cannot be handled
 #[derive(Debug, PartialEq)]
 pub enum MatcherResult {
     OK,
@@ -5,6 +9,7 @@ pub enum MatcherResult {
     KO,
 }
 
+/// Trait to implement to be able to tell whether a [crate::router::Handler] can handle a query or not
 pub trait Matcher: Sync + Send {
     fn matches(&self, request: &hyper::Request<hyper::Body>) -> MatcherResult;
 }
@@ -18,6 +23,7 @@ pub enum MatcherBuilderError {
 enum UriMatcher {
     All,
     Exact(String),
+    Regex(regex::Regex),
 }
 
 enum MethodMatcher {
@@ -36,6 +42,7 @@ impl Matcher for MatcherImpl {
         let uri_match = match &self.uri_matcher {
             UriMatcher::All => true,
             UriMatcher::Exact(uri) => request.uri().path() == uri,
+            UriMatcher::Regex(re) => re.is_match(request.uri().path()),
         };
 
         if uri_match {
@@ -80,6 +87,15 @@ impl MatcherBuilder {
         let uri: std::result::Result<String, _> = std::convert::TryFrom::try_from(uri);
         self.uri_matcher = match uri {
             Ok(uri) => Some(UriMatcher::Exact(uri)),
+            _ => None,
+        };
+        self
+    }
+
+    pub fn regex_path(mut self, regex: &str) -> MatcherBuilder {
+        let regex = regex::Regex::new(regex);
+        self.uri_matcher = match regex {
+            Ok(regex) => Some(UriMatcher::Regex(regex)),
             _ => None,
         };
         self
@@ -145,6 +161,19 @@ mod tests {
         assert_eq!(MatcherResult::OK, matcher.matches(&request));
 
         let request = get_request("/bad_uri", &hyper::Method::GET);
+        assert_eq!(MatcherResult::KO, matcher.matches(&request));
+    }
+
+    #[test]
+    fn it_builds_regex_path_matchers() {
+        let matcher = builder().regex_path("^/test_uri").build().unwrap();
+        let request = get_request("/test_uri", &hyper::Method::POST);
+        assert_eq!(MatcherResult::OK, matcher.matches(&request));
+
+        let request = get_request("/test_uri/many/more", &hyper::Method::POST);
+        assert_eq!(MatcherResult::OK, matcher.matches(&request));
+
+        let request = get_request("/a/test_uri", &hyper::Method::GET);
         assert_eq!(MatcherResult::KO, matcher.matches(&request));
     }
 

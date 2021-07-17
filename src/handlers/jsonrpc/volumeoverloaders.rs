@@ -1,13 +1,7 @@
-cfg_if::cfg_if! {
-    if #[cfg(test)] {
-        use crate::avreceiver::MockAVReceiver as AVReceiver;
-    } else {
-        use crate::avreceiver::AVReceiver;
-    }
-}
+use crate::avreceiver::AVReceiverInterface;
 
 pub struct JRPCSetVolume {
-    receiver: std::sync::Arc<AVReceiver>,
+    receiver: std::sync::Arc<dyn AVReceiverInterface>,
 }
 
 #[derive(serde::Deserialize)]
@@ -16,7 +10,7 @@ struct SetVolume {
 }
 
 pub struct JRPCSetMute {
-    receiver: std::sync::Arc<AVReceiver>,
+    receiver: std::sync::Arc<dyn AVReceiverInterface>,
 }
 
 #[derive(serde::Deserialize)]
@@ -25,7 +19,7 @@ struct SetMute {
 }
 
 pub struct JRPCGetProperties {
-    receiver: std::sync::Arc<AVReceiver>,
+    receiver: std::sync::Arc<dyn AVReceiverInterface>,
 }
 
 #[derive(serde::Deserialize)]
@@ -34,8 +28,10 @@ struct GetProperties {
 }
 
 impl JRPCSetVolume {
-    pub fn new(receiver: std::sync::Arc<AVReceiver>) -> JRPCSetVolume {
-        JRPCSetVolume { receiver }
+    pub fn new(
+        receiver: std::sync::Arc<dyn AVReceiverInterface>,
+    ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
+        Box::new(JRPCSetVolume { receiver })
     }
 }
 
@@ -47,14 +43,14 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         _handler: &crate::handlers::jsonrpc::JsonrpcHandler,
     ) -> Result<crate::handlers::jsonrpc::JRPCResponse, crate::router::RouterError> {
-        // TODO improve this mess
-        let volume = match json_request.params() {
-            Some(params) => match params {
-                serde_json::Value::Object(params) => params.get("volume"),
-                _ => None,
-            },
-            None => None,
-        };
+        let volume = json_request.params().and_then(|value| {
+            if let serde_json::Value::Object(params) = value {
+                params.get("volume")
+            } else {
+                None
+            }
+        });
+        // TODO improve this when async closures are better handled ?
         let result = match volume {
             Some(volume) => match volume {
                 serde_json::Value::Number(volume) => {
@@ -80,7 +76,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             .map(|volume| {
                 crate::handlers::jsonrpc::JRPCResponse::new(
                     Some(serde_json::json!(volume)),
-                    json_request.id().to_owned(),
+                    json_request.id(),
                 )
             })
             .ok_or(crate::router::RouterError::InvalidRequest(String::from(
@@ -90,8 +86,10 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
 }
 
 impl JRPCSetMute {
-    pub fn new(receiver: std::sync::Arc<AVReceiver>) -> JRPCSetMute {
-        JRPCSetMute { receiver }
+    pub fn new(
+        receiver: std::sync::Arc<dyn AVReceiverInterface>,
+    ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
+        Box::new(JRPCSetMute { receiver })
     }
 }
 
@@ -103,14 +101,14 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         _handler: &crate::handlers::jsonrpc::JsonrpcHandler,
     ) -> Result<crate::handlers::jsonrpc::JRPCResponse, crate::router::RouterError> {
+        let mute = json_request.params().and_then(|value| {
+            if let serde_json::Value::Object(params) = value {
+                params.get("mute")
+            } else {
+                None
+            }
+        });
         // TODO improve this mess
-        let mute = match json_request.params() {
-            Some(params) => match params {
-                serde_json::Value::Object(params) => params.get("mute"),
-                _ => None,
-            },
-            None => None,
-        };
         let result = match mute {
             Some(mute) => match mute {
                 serde_json::Value::Bool(mute) => Some(self.receiver.set_mute(*mute).await),
@@ -130,7 +128,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
             .map(|mute| {
                 crate::handlers::jsonrpc::JRPCResponse::new(
                     Some(serde_json::json!(mute)),
-                    json_request.id().to_owned(),
+                    json_request.id(),
                 )
             })
             .ok_or(crate::router::RouterError::InvalidRequest(String::from(
@@ -140,8 +138,10 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
 }
 
 impl JRPCGetProperties {
-    pub fn new(receiver: std::sync::Arc<AVReceiver>) -> JRPCGetProperties {
-        JRPCGetProperties { receiver }
+    pub fn new(
+        receiver: std::sync::Arc<dyn AVReceiverInterface>,
+    ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
+        Box::new(JRPCGetProperties { receiver })
     }
 
     fn is_volume_property(param: &String) -> bool {
@@ -170,7 +170,7 @@ impl JRPCGetProperties {
 
     async fn get_other_properties(
         parts: hyper::http::request::Parts,
-        json_request: crate::handlers::jsonrpc::JRPCQuery,
+        json_request: &crate::handlers::jsonrpc::JRPCQuery,
         handler: &crate::handlers::jsonrpc::JsonrpcHandler,
         properties: Vec<String>,
     ) -> Result<serde_json::Map<String, serde_json::Value>, crate::router::RouterError> {
@@ -180,7 +180,7 @@ impl JRPCGetProperties {
                 Some(serde_json::json!({
                     "properties": serde_json::Value::from(properties)
                 })),
-                json_request.id().to_owned(),
+                json_request.id(),
             );
 
             let response = handler.forward_jrpc(parts, query).await?;
@@ -223,13 +223,11 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
                     }
                 }
 
-                let id = json_request.id().to_owned();
-
                 let (volume_props, other_props) = futures::join!(
                     self.get_volume_properties(&volume_properties),
                     JRPCGetProperties::get_other_properties(
                         parts,
-                        json_request,
+                        &json_request,
                         handler,
                         other_properties
                     )
@@ -244,7 +242,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
                 }
                 return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
                     Some(serde_json::Value::Object(other_props)),
-                    id,
+                    json_request.id(),
                 ));
             }
         }
@@ -256,15 +254,13 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
 
 #[cfg(test)]
 mod tests {
-    use crate::handlers::jsonrpc::JsonrpcOverloader;
-
     fn get_request<T: std::fmt::Display>(
         param: &str,
         value: T,
     ) -> crate::handlers::jsonrpc::JRPCQuery {
         serde_json::from_str(
             format!(
-                r#"{{"method":"Application.Whatever", "params": {{"{}": {}}}}}"#,
+                r#"{{"method":"Application.SetVolume", "params": {{"{}": {}}}}}"#,
                 param, value
             )
             .as_str(),
@@ -278,6 +274,7 @@ mod tests {
 
     fn get_parts() -> hyper::http::request::Parts {
         let (parts, _) = hyper::Request::builder()
+            .method("POST")
             .uri("https://localhost:8080/jsonrpc")
             .body(hyper::Body::empty())
             .unwrap()
@@ -439,17 +436,12 @@ mod tests {
             .await;
 
         let jrpc_handler = crate::handlers::jsonrpc::JsonrpcHandler::builder()
-            .with_url(mock_server.uri())
+            .with_url(&mock_server.uri())
             .build();
 
         let jrpc = super::JRPCGetProperties::new(mock_receiver);
 
-        let (parts, _) = hyper::Request::builder()
-            .method("POST")
-            .uri("https://localhost:8080/jsonrpc")
-            .body(hyper::Body::empty())
-            .unwrap()
-            .into_parts();
+        let parts = get_parts();
 
         let request = crate::handlers::jsonrpc::JRPCQuery::new(
             String::from("Application.GetProperties"),

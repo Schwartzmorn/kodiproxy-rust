@@ -1,9 +1,17 @@
-pub use self::avreceiver::{AVReceiver, AVReceiverBuilder};
+pub use self::avreceiver::AVReceiverInterface;
 
-pub mod avreceiver;
+mod avreceiver;
 
-cfg_if::cfg_if! {
-    if #[cfg(test)] {
-        pub use self::avreceiver::MockAVReceiver;
-    }
+#[cfg(test)]
+pub use self::avreceiver::MockAVReceiver;
+
+pub fn get_avreceiver(
+    configuration: &crate::configuration::AVReceiverConfiguration,
+) -> std::sync::Arc<dyn AVReceiverInterface> {
+    std::sync::Arc::new(
+        avreceiver::AVReceiver::builder()
+            .with_url(configuration.target.to_owned())
+            .with_desired_input(configuration.desired_input.to_owned())
+            .build(),
+    )
 }

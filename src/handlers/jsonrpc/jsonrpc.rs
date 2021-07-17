@@ -48,11 +48,11 @@ pub struct JRPCResponse {
 }
 
 impl JRPCQuery {
-    pub fn params(&self) -> &Option<serde_json::Value> {
-        &self.params
+    pub fn params(&self) -> Option<&serde_json::Value> {
+        self.params.as_ref()
     }
-    pub fn id(&self) -> &Option<i32> {
-        &self.id
+    pub fn id(&self) -> Option<i32> {
+        self.id.to_owned()
     }
     pub fn method(&self) -> &String {
         &self.method
@@ -82,31 +82,9 @@ impl JRPCResponse {
 }
 
 impl JsonrpcHandlerBuilder {
-    /// Gives the path of the jsonrpc service to target (eg. "/jsonrpc")
-    pub fn with_path(mut self, path: String) -> JsonrpcHandlerBuilder {
-        self.path = if path.len() == 0 || path.starts_with("/") {
-            path
-        } else {
-            String::from("/") + path.as_str()
-        };
-        self
-    }
-
-    /// Gives the scheme (http or https)
-    pub fn with_scheme(mut self, scheme: String) -> JsonrpcHandlerBuilder {
-        self.scheme = scheme;
-        self
-    }
-
-    /// Gives the authority to target, ie domain / ip plus optionally the port
-    pub fn with_authority(mut self, authority: String) -> JsonrpcHandlerBuilder {
-        self.authority = authority;
-        self
-    }
-
     /// Gives the full url (optionally the path) to target
-    pub fn with_url(mut self, url: String) -> JsonrpcHandlerBuilder {
-        let (scheme, authority, path) = crate::router::parse_url(&url);
+    pub fn with_url(mut self, url: &String) -> JsonrpcHandlerBuilder {
+        let (scheme, authority, path) = crate::router::parse_url(url);
 
         self.scheme = scheme;
         self.authority = authority;
@@ -120,10 +98,10 @@ impl JsonrpcHandlerBuilder {
     /// Adds an overloader
     pub fn add_overloader(
         mut self,
-        jrpc_method: String,
+        jrpc_method: &str,
         overloader: Box<dyn JsonrpcOverloader>,
     ) -> JsonrpcHandlerBuilder {
-        self.overloaders.insert(jrpc_method, overloader);
+        self.overloaders.insert(jrpc_method.to_owned(), overloader);
         self
     }
 
@@ -207,16 +185,13 @@ impl JsonrpcHandler {
     }
 
     fn f_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
-        // TODO log
         let msg = format!("{}: [{}]", msg, err);
-        eprintln!("{}", msg);
+        log::warn!("{}", msg);
         crate::router::RouterError::ForwardingError(msg)
     }
 
     fn h_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
-        // TODO log
         let msg = format!("{}: [{}]", msg, err);
-        eprintln!("{}", msg);
         crate::router::RouterError::InvalidRequest(msg)
     }
 }
@@ -296,7 +271,7 @@ mod tests {
             .await;
 
         let jrpc = crate::handlers::jsonrpc::JsonrpcHandler::builder()
-            .with_url(mock_server.uri())
+            .with_url(&mock_server.uri())
             .build();
 
         let req = hyper::Request::builder()
@@ -337,7 +312,7 @@ mod tests {
     #[tokio::test]
     async fn it_forwards_to_overloader() {
         let jrpc = crate::handlers::jsonrpc::JsonrpcHandler::builder()
-            .add_overloader(String::from("A.Method"), Box::from(MockOverloader {}))
+            .add_overloader("A.Method", Box::from(MockOverloader {}))
             .build();
 
         let req = hyper::Request::builder()
@@ -374,7 +349,7 @@ mod tests {
             .await;
 
         let jrpc = crate::handlers::jsonrpc::JsonrpcHandler::builder()
-            .with_url(mock_server.uri())
+            .with_url(&mock_server.uri())
             .build();
 
         let req = hyper::Request::builder()

@@ -1,3 +1,28 @@
+#[async_trait::async_trait]
+pub trait AVReceiverInterface: Sync + Send {
+    /// Returns whether the receiver is powered on or not
+    async fn is_powered_on(&self) -> bool;
+
+    /// Switches on or off the receiver.
+    ///
+    /// When switching on, the input will also be changed to the desired one
+    ///
+    /// The receiver will only be actually switched off if it is currently using the desired input
+    async fn set_power(&self, on: bool) -> bool;
+
+    /// Mutes / unmutes the receiver
+    async fn set_mute(&self, mute: bool) -> bool;
+
+    /// Increments or decrements volume and returns the resulting volume
+    async fn increment_volume(&self, increment: bool) -> i16;
+
+    /// Gives the current volume and mute status of the receiver
+    async fn get_volume(&self) -> (i16, bool);
+
+    /// Sets the volume, taking a percentage in input, and returns the resulting volume
+    async fn set_volume(&self, volume: i16) -> i16;
+}
+
 /// Builder for [AVReceiver](crate::avreceiver::AVReceiver)
 pub struct AVReceiverBuilder {
     scheme: String,
@@ -8,12 +33,6 @@ pub struct AVReceiverBuilder {
 }
 
 impl AVReceiverBuilder {
-    /// Gives the authority of the av receiver (ie domain or ip + port)
-    pub fn with_authority(mut self, authority: String) -> AVReceiverBuilder {
-        self.authority = authority;
-        self
-    }
-
     /// Gives the url of the av receiver (scheme + authority)
     pub fn with_url(mut self, url: String) -> AVReceiverBuilder {
         let (scheme, authority, _) = crate::router::parse_url(&url);
@@ -31,6 +50,7 @@ impl AVReceiverBuilder {
     }
 
     /// Gives the minimum and maximum volume possible on the receiver
+    #[allow(dead_code)]
     pub fn with_volume_range(mut self, min: f32, max: f32) -> AVReceiverBuilder {
         if max <= min {
             panic!("Invalid volume range")
@@ -119,7 +139,6 @@ pub struct AVReceiver {
     max_volume: f32,
 }
 
-#[cfg_attr(test, mockall::automock)]
 impl AVReceiver {
     /// Returns a new [AVReceiverBuilder](crate::avreceiver::AVReceiverBuilder) with default values
     pub fn builder() -> AVReceiverBuilder {
@@ -132,93 +151,15 @@ impl AVReceiver {
         }
     }
 
-    /// Returns whether the receiver is powered on or not
-    pub async fn is_powered_on(&self) -> bool {
-        match self.get_status().await {
-            Ok(item) => match item.power {
-                Some(power) => power.value == "ON",
-                None => false,
-            },
-            _ => false,
-        }
-    }
-
-    /// Switches on or off the receiver.
-    ///
-    /// When switching on, the input will also be changed to the desired one
-    ///
-    /// The receiver will only be actually switched off if it is currently using the desired input
-    pub async fn set_power(&self, on: bool) -> bool {
-        let status = self.get_status().await;
-        let (is_powered_on, mut is_input_ok) = status
-            .map(|s| (s.is_powered_on(), s.get_input() == self.desired_input))
-            .unwrap_or((false, false));
-        if on {
-            if !is_powered_on {
-                let _ = self.send_command(format!("{}{}", CMD_POWER, "On")).await;
-            }
-            while !is_input_ok {
-                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
-                is_input_ok = self.set_source().await;
-            }
-            true
-        } else {
-            if is_input_ok {
-                let _ = self
-                    .send_command(format!("{}{}", CMD_POWER, "Standby"))
-                    .await;
-            }
-            false
-        }
-    }
-
-    /// Mutes / unmutes the receiver
-    pub async fn set_mute(&self, mute: bool) -> bool {
-        self.send_command(format!("{}{}", CMD_MUTE, if mute { "On" } else { "Off" }))
-            .await
-            .map(|res| res.is_muted())
-            .unwrap_or(false)
-    }
-
-    /// Increments or decrements volume and returns the resulting volume
-    pub async fn increment_volume(&self, increment: bool) -> i16 {
-        // Setting the volume works better than to use the increment / decrement
-        let mut volume = self
-            .get_status()
-            .await
-            .map(|item| item.get_volume_db(&self))
-            .unwrap_or(self.min_volume);
-
-        volume = volume + if increment { 1.0 } else { -1.0 };
-        // TODO use clamp
-        volume = volume.max(self.min_volume).min(self.max_volume);
-
-        self.send_command(format!("{}{:.1}", CMD_VOLUME, volume))
-            .await
-            .map(|item| item.get_volume_percent(&self))
-            .unwrap_or(0)
-    }
-
-    /// Gives the current volume and mute status of the receiver
-    pub async fn get_volume(&self) -> (i16, bool) {
-        self.get_status()
-            .await
-            .map(|item| (item.get_volume_percent(&self), item.is_muted()))
-            .unwrap_or((0, false))
-    }
-
-    /// Sets the volume, taking a percentage in input, and returns the resulting volume
-    pub async fn set_volume(&self, volume: i16) -> i16 {
-        // TODO use clamp
-        let volume = std::cmp::max(0, std::cmp::min(volume, 100));
-        let volume = self.percent_to_db(volume);
-        self.send_command(format!("{}{:.1}", CMD_VOLUME, volume))
-            .await
-            .map(|item| item.get_volume_percent(&self))
-            .unwrap_or(0)
-    }
-
     async fn send_command(&self, cmd: String) -> Result<Item, crate::router::RouterError> {
+        self.send_command_inner(cmd, true).await
+    }
+
+    async fn send_command_inner(
+        &self,
+        cmd: String,
+        expect_body: bool,
+    ) -> Result<Item, crate::router::RouterError> {
         let uri = hyper::Uri::builder()
             .scheme(self.scheme.as_str())
             .authority(self.authority.as_str())
@@ -248,10 +189,18 @@ impl AVReceiver {
             AVReceiver::error("Received invalid utf8 as response from command", &cmd, err)
         })?;
 
-        // TODO there's no body in the response of set_source, avoid logging error
-        quick_xml::de::from_str(payload.as_str()).map_err(|err| {
-            AVReceiver::error("Could not decode receiver response from command", &cmd, err)
-        })
+        if expect_body {
+            quick_xml::de::from_str(payload.as_str()).map_err(|err| {
+                AVReceiver::error("Could not decode receiver response from command", &cmd, err)
+            })
+        } else {
+            Ok(Item {
+                power: None,
+                input_func_select: None,
+                master_volume: None,
+                mute: None,
+            })
+        }
     }
 
     async fn get_status(&self) -> Result<Item, crate::router::RouterError> {
@@ -259,8 +208,9 @@ impl AVReceiver {
     }
 
     async fn set_source(&self) -> bool {
+        // no body in the response when setting source
         let _ = self
-            .send_command(format!("{}{}", CMD_SOURCE, self.desired_input))
+            .send_command_inner(format!("{}{}", CMD_SOURCE, self.desired_input), false)
             .await;
         match self.get_status().await {
             Ok(res) => res.get_input() == self.desired_input,
@@ -292,15 +242,94 @@ impl AVReceiver {
         cmd: &String,
         err: T,
     ) -> crate::router::RouterError {
-        // TODO log
         let msg = format!("{} '{}': [{}]", msg, cmd, err);
-        eprintln!("{}", msg);
+        log::warn!("{}", msg);
         crate::router::RouterError::HandlerError(502, msg)
+    }
+}
+
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+impl AVReceiverInterface for AVReceiver {
+    async fn is_powered_on(&self) -> bool {
+        match self.get_status().await {
+            Ok(item) => match item.power {
+                Some(power) => power.value == "ON",
+                None => false,
+            },
+            _ => false,
+        }
+    }
+
+    async fn set_power(&self, on: bool) -> bool {
+        let status = self.get_status().await;
+        let (is_powered_on, mut is_input_ok) = status
+            .map(|s| (s.is_powered_on(), s.get_input() == self.desired_input))
+            .unwrap_or((false, false));
+        if on {
+            if !is_powered_on {
+                let _ = self.send_command(format!("{}{}", CMD_POWER, "On")).await;
+            }
+            while !is_input_ok {
+                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+                is_input_ok = self.set_source().await;
+            }
+            true
+        } else {
+            if is_input_ok {
+                let _ = self
+                    .send_command(format!("{}{}", CMD_POWER, "Standby"))
+                    .await;
+            }
+            false
+        }
+    }
+
+    async fn set_mute(&self, mute: bool) -> bool {
+        self.send_command(format!("{}{}", CMD_MUTE, if mute { "On" } else { "Off" }))
+            .await
+            .map(|res| res.is_muted())
+            .unwrap_or(false)
+    }
+
+    async fn increment_volume(&self, increment: bool) -> i16 {
+        // Setting the volume works better than to use the increment / decrement
+        let mut volume = self
+            .get_status()
+            .await
+            .map(|item| item.get_volume_db(&self))
+            .unwrap_or(self.min_volume);
+
+        volume = volume + if increment { 1.0 } else { -1.0 };
+        volume = volume.clamp(self.min_volume, self.max_volume);
+
+        self.send_command(format!("{}{:.1}", CMD_VOLUME, volume))
+            .await
+            .map(|item| item.get_volume_percent(&self))
+            .unwrap_or(0)
+    }
+
+    async fn get_volume(&self) -> (i16, bool) {
+        self.get_status()
+            .await
+            .map(|item| (item.get_volume_percent(&self), item.is_muted()))
+            .unwrap_or((0, false))
+    }
+
+    async fn set_volume(&self, volume: i16) -> i16 {
+        let volume = volume.clamp(0, 100);
+        let volume = self.percent_to_db(volume);
+        self.send_command(format!("{}{:.1}", CMD_VOLUME, volume))
+            .await
+            .map(|item| item.get_volume_percent(&self))
+            .unwrap_or(0)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::AVReceiverInterface;
+
     fn get_receiver(mock_server: &wiremock::MockServer) -> super::AVReceiver {
         super::AVReceiver::builder()
             .with_url(mock_server.uri())

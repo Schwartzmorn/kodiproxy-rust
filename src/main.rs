@@ -1,43 +1,70 @@
-pub mod avreceiver;
-pub mod handlers;
-pub mod router;
+fn parse_args() -> clap::ArgMatches<'static> {
+    clap::App::new("KodiProxy")
+        .author("Schwartzmorn")
+        .about("My one stop proxy for my pi")
+        .arg(
+            clap::Arg::with_name("configuration")
+                .short("c")
+                .long("configuration")
+                .value_name("FILE")
+                .help("path to the configuration file of the different modules"),
+        )
+        .arg(
+            clap::Arg::with_name("dump_configuration")
+                .long("dump_configuration")
+                .value_name("OUT_FILE")
+                .help("dump the configuration to file and exit"),
+        )
+        .get_matches()
+}
 
-async fn shutdown_signal() {
-    // TODO wait for signal
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to install CTRL+C signal handler");
+fn get_configuration(path: Option<&str>) -> kp::configuration::ProxyConfiguration {
+    match path {
+        Some(path) => {
+            let configuration = std::fs::read(path).expect("Configuration file not found");
+            let configuration =
+                String::from_utf8(configuration).expect("Could not decode the configuration file");
+            serde_json::from_str(configuration.as_str()).expect("Invalid configuration file")
+        }
+        None => serde_json::from_str("{}").unwrap(),
+    }
+}
+
+fn dump_configuration(path: &str, configuration: kp::configuration::ProxyConfiguration) {
+    println!("Dumping configuration to {}", path);
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&configuration).expect("Failed to serialize configuration"),
+    )
+    .expect("Failed to write configuration");
+}
+
+fn setup_logging(configuration: &kp::configuration::LoggingConfiguration) {
+    // TODO take target into account
+    let level = if configuration.enabled {
+        configuration.level
+    } else {
+        log::LevelFilter::Off
+    };
+    env_logger::Builder::from_default_env()
+        .filter_level(level)
+        .target(env_logger::Target::Stdout)
+        .init();
+    log::info!("Logger initialized with level {:?}", level);
 }
 
 #[tokio::main]
 async fn main() {
-    // We'll bind to 127.0.0.1:3000
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3000));
+    let args = parse_args();
 
-    let mut router = router::Router::new();
-    let handler = handlers::jsonrpc::JsonrpcHandler::builder()
-        .with_url(String::from("http://192.168.1.18:8081/jsonrpc"))
-        .build();
-    router.add_handler(handler);
+    let configuration = get_configuration(args.value_of("configuration"));
 
-    let router = std::sync::Arc::new(router);
+    setup_logging(&configuration.logging);
 
-    let make_svc = hyper::service::make_service_fn(move |_conn| {
-        let router = router.clone();
-        async move {
-            Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
-                let router = router.clone();
-                async move { router.handle(req).await }
-            }))
-        }
-    });
-
-    let server = hyper::Server::bind(&addr).serve(make_svc);
-
-    let graceful = server.with_graceful_shutdown(shutdown_signal());
-
-    // Run this server for... forever!
-    if let Err(e) = graceful.await {
-        eprintln!("server error: {}", e);
+    if let Some(path) = args.value_of("dump_configuration") {
+        dump_configuration(path, configuration);
+        return;
     }
+
+    kp::serve(&configuration, None).await;
 }
