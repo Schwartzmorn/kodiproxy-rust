@@ -2,12 +2,12 @@ use std::str::FromStr;
 
 use futures::FutureExt;
 
-pub mod avreceiver;
-pub mod cec;
+mod avreceiver;
+mod cec;
 pub mod configuration;
-pub mod dbus;
-pub mod handlers;
-pub mod router;
+mod dbus;
+mod handlers;
+mod router;
 
 async fn shutdown_signal(exit_channel: futures::channel::oneshot::Receiver<()>) {
     let mut exit_channel = exit_channel.fuse();
@@ -35,11 +35,12 @@ fn get_socketaddr(configuration: &configuration::ServerConfiguration) -> std::ne
 
 fn setup_router(
     configuration: &configuration::ProxyConfiguration,
+    exit_sender: Option<futures::channel::oneshot::Sender<()>>,
 ) -> std::sync::Arc<router::Router> {
     let avreceiver = avreceiver::get_avreceiver(&configuration.receiver);
     let cec_interface = cec::get_cec_connection(&configuration.cec);
 
-    let router = router::Router::new()
+    let mut router = router::Router::new()
         .add_handler(handlers::jsonrpc::get_jrpc_handler(
             &configuration.jrpc,
             avreceiver.clone(),
@@ -47,6 +48,10 @@ fn setup_router(
         ))
         .add_handlers(handlers::files::get_file_handlers(&configuration.file))
         .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()));
+
+    if let Some(exit_sender) = exit_sender {
+        router = router.add_handler(handlers::exit::get_handler(exit_sender));
+    }
 
     std::sync::Arc::new(router)
 }
@@ -64,7 +69,19 @@ pub async fn serve(
         Err(e) => log::warn!("Failed to register server in Avahi: {:?}", e),
     }
 
-    let router = setup_router(&configuration);
+    let mut exit_sender: Option<futures::channel::oneshot::Sender<()>> = None;
+
+    let exit_receiver = match exit_channel {
+        Some(receiver) => receiver,
+        None => {
+            // this ultimately means the "quit" handler is only setup if the receiver is not given in input
+            let (sender, receiver) = futures::channel::oneshot::channel::<()>();
+            exit_sender = Some(sender);
+            receiver
+        }
+    };
+
+    let router = setup_router(&configuration, exit_sender);
 
     let make_svc = hyper::service::make_service_fn(move |_conn| {
         let router = router.clone();
@@ -78,12 +95,7 @@ pub async fn serve(
 
     let server = hyper::Server::bind(&addr).serve(make_svc);
 
-    let (_sender, mut receiver) = futures::channel::oneshot::channel::<()>();
-    if let Some(rcv) = exit_channel {
-        receiver = rcv;
-    }
-
-    let graceful = server.with_graceful_shutdown(shutdown_signal(receiver));
+    let graceful = server.with_graceful_shutdown(shutdown_signal(exit_receiver));
 
     log::info!("Server now listening on {}", configuration.server.host);
 

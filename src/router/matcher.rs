@@ -29,7 +29,6 @@ enum UriMatcher {
 enum MethodMatcher {
     All,
     Exact(hyper::Method),
-    Excluding(hyper::Method),
 }
 
 struct MatcherImpl {
@@ -49,7 +48,6 @@ impl Matcher for MatcherImpl {
             let method_match = match &self.method_matcher {
                 MethodMatcher::All => true,
                 MethodMatcher::Exact(method) => request.method() == method,
-                MethodMatcher::Excluding(method) => request.method() != method,
             };
 
             return if method_match {
@@ -108,18 +106,6 @@ impl MatcherBuilder {
         let method: std::result::Result<hyper::Method, _> = std::convert::TryFrom::try_from(method);
         self.method_matcher = match method {
             Ok(method) => Some(MethodMatcher::Exact(method)),
-            _ => None,
-        };
-        self
-    }
-
-    pub fn excluding_method<T>(mut self, method: T) -> MatcherBuilder
-    where
-        hyper::Method: std::convert::TryFrom<T>,
-    {
-        let method: std::result::Result<hyper::Method, _> = std::convert::TryFrom::try_from(method);
-        self.method_matcher = match method {
-            Ok(method) => Some(MethodMatcher::Excluding(method)),
             _ => None,
         };
         self
@@ -189,19 +175,5 @@ mod tests {
 
         let request = get_request("/other_uri", &hyper::Method::POST);
         assert_eq!(MatcherResult::UriOnly, matcher.matches(&request));
-    }
-
-    #[test]
-    fn it_builds_method_excluding_matchers() {
-        let matcher = builder()
-            .excluding_method(&hyper::Method::GET)
-            .build()
-            .unwrap();
-
-        let request = get_request("/test_uri", &hyper::Method::GET);
-        assert_eq!(MatcherResult::UriOnly, matcher.matches(&request));
-
-        let request = get_request("/other_uri", &hyper::Method::POST);
-        assert_eq!(MatcherResult::OK, matcher.matches(&request));
     }
 }

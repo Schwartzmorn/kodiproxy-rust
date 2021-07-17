@@ -32,7 +32,7 @@ impl<'a> AvahiConnection<'a> {
                 -1i32,                  // interface index => -1 means unspecified
                 -1i32,                  // protocol => -1 means unspecified, 0 means ipv4
                 0u32,                   // flags
-                "KP test",              // name of the entry
+                "Kodiproxy (rust)",     // name of the entry
                 "_xbmc-jsonrpc-h._tcp", // type of the entry
                 "",                     // domain
                 "",                     // host

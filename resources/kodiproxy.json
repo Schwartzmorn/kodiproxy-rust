@@ -1,0 +1,22 @@
+{
+  "cec": {
+    "cecVersion": "4.0.4"
+  },
+  "file": {
+    "rootPath": "%FILE_REPOSITORY_PATH%"
+  },
+  "jrpc": {
+    "target": "%JRPC_TARGET%"
+  },
+  "logging": {
+    "enabled": true,
+    "level": "WARN"
+  },
+  "receiver": {
+    "desiredInput": "AUXB",
+    "target": "http://%RECEIVER_IP%"
+  },
+  "server": {
+    "host": "127.0.0.1:%PORT%"
+  }
+}

@@ -1,0 +1,12 @@
+# systemd daemon to run kodi proxy
+[Unit]
+Description=Kodiproxy service
+
+[Service]
+User=kp
+ExecStart=/usr/lib/kp-rust/kodiproxy -c /usr/lib/kp-rust/kodiproxy.json
+ExecStop=curl 'http://localhost:%PORT%/exit'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
