@@ -17,6 +17,6 @@
     "target": "http://%RECEIVER_IP%"
   },
   "server": {
-    "host": "127.0.0.1:%PORT%"
+    "host": "[::]:%PORT%"
   }
 }

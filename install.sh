@@ -5,6 +5,7 @@ FILE_REPOSITORY_PATH=/file_repository
 LIB_PATH="/usr/lib/kp-rust"
 CUR_DIR=$(dirname $(realpath $0))
 OLD_DIR=$(realpath .)
+SYSTEMD_SERVICE=kodiproxy.service
 
 # Installs the library needed to compile and builds
 function build() {
@@ -20,6 +21,8 @@ function create_user() {
     if [[ $? -ne 0 ]]; then
         echo "Creating kp user"
         sudo useradd -M kp
+	# video group is needed to use CEC
+	sudo usermod -a -G video kp
     else
         echo "User kp already exists. Not recreating it"
     fi
@@ -92,28 +95,32 @@ function copy_settings_file() {
             sudo tee "$2" > /dev/null
 }
 
+# Stops the previously installed kodiproxy service
+function stop_systemd_service() {
+    echo 'Stopping systemd service'
+    local enabled=$(systemctl is-enabled $SYSTEMD_SERVICE)
+    local active='notactive'
+    if [[ $enabled == 'enabled' ]]; then
+        active=$(systemctl is-active $SYSTEMD_SERVICE)
+    fi
+    if [[ $active == 'active' ]]; then
+        sudo systemctl stop $SYSTEMD_SERVICE
+    fi
+    if [[ $enabled == 'enabled' ]]; then
+        sudo systemctl disable $SYSTEMD_SERVICE
+    fi
+}
+
 # Creates and starts the service so it's run in the background and started automatically
 function install_systemd_service() {
     echo 'Installing systemd service'
-    local service="kodiproxy.service"
-    local enabled=$(systemctl is-enabled $service)
-    local active='notactive'
-    if [[ $enabled == 'enabled' ]]; then
-        active=$(systemctl is-active $service)
-    fi
-    if [[ $active == 'active' ]]; then
-        sudo systemctl stop $service
-    fi
-    if [[ $enabled == 'enabled' ]]; then
-        sudo systemctl disable $service
-    fi
-
     copy_settings_file "$CUR_DIR/resources/kodiproxy.systemd.service" "/lib/systemd/system/kodiproxy.service"
 
-    sudo systemctl enable $service
-    sudo systemctl start $service
+    sudo systemctl enable $SYSTEMD_SERVICE
+    sudo systemctl start $SYSTEMD_SERVICE
 }
 
+# Sets up the file repository folder
 function setup_file_repo {
     sudo mkdir -p $FILE_REPOSITORY_PATH
     sudo chown -R kp:kp $FILE_REPOSITORY_PATH
@@ -124,5 +131,6 @@ build
 create_user
 setup_file_repo
 get_settings
+stop_systemd_service
 install_lib $CUR_DIR $LIB_PATH
 install_systemd_service
