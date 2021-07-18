@@ -6,6 +6,7 @@ mod avreceiver;
 mod cec;
 pub mod configuration;
 mod dbus;
+mod files;
 mod handlers;
 mod router;
 

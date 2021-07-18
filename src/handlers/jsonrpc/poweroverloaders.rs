@@ -51,7 +51,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetSystemProperties {
                 ));
             }
         }
-        Err(crate::router::RouterError::InvalidRequest(String::from(
+        Err(crate::router::InvalidRequest(String::from(
             "Invalid properties parameter",
         )))
     }
@@ -73,7 +73,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
             if let Ok(Ok(())) = res {
                 Ok(())
             } else {
-                Err(crate::router::RouterError::HandlerError(
+                Err(crate::router::HandlerError(
                     500,
                     format!("Failed to switch off CEC"),
                 ))

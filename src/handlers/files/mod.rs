@@ -1,8 +1,7 @@
 mod handlers;
-mod repository;
 
 fn map_error<T: std::fmt::Debug>(e: &T, msg: &str, error_code: u16) -> crate::router::RouterError {
-    crate::router::RouterError::HandlerError(error_code, format!("{}: {:?}", msg, e))
+    crate::router::HandlerError(error_code, format!("{}: {:?}", msg, e))
 }
 
 fn get_matcher<T>(method: T) -> Box<dyn crate::router::matcher::Matcher>
@@ -19,7 +18,7 @@ where
 pub fn get_file_handlers(
     configuration: &crate::configuration::FileConfiguration,
 ) -> Vec<Box<dyn crate::router::Handler>> {
-    let file_repo = repository::FileRepository::new(&configuration.root_path);
+    let file_repo = crate::files::FileRepository::new(&configuration.root_path);
     log::info!(
         "Initializing file repository in {:?}",
         &configuration.root_path

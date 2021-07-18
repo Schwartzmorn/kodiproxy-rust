@@ -244,7 +244,7 @@ impl AVReceiver {
     ) -> crate::router::RouterError {
         let msg = format!("{} '{}': [{}]", msg, cmd, err);
         log::warn!("{}", msg);
-        crate::router::RouterError::HandlerError(502, msg)
+        crate::router::HandlerError(502, msg)
     }
 }
 

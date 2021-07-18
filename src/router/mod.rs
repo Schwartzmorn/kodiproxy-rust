@@ -1,4 +1,4 @@
-pub use self::router::{Handler, Router, RouterError};
+pub use self::router::*;
 
 pub mod matcher;
 pub mod router;

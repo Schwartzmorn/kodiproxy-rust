@@ -79,7 +79,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
                     json_request.id(),
                 )
             })
-            .ok_or(crate::router::RouterError::InvalidRequest(String::from(
+            .ok_or(crate::router::InvalidRequest(String::from(
                 "Invalid volume parameter",
             )))
     }
@@ -131,7 +131,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
                     json_request.id(),
                 )
             })
-            .ok_or(crate::router::RouterError::InvalidRequest(String::from(
+            .ok_or(crate::router::InvalidRequest(String::from(
                 "Invalid mute parameter",
             )))
     }
@@ -246,7 +246,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
                 ));
             }
         }
-        Err(crate::router::RouterError::InvalidRequest(String::from(
+        Err(crate::router::InvalidRequest(String::from(
             "Invalid properties parameter",
         )))
     }
@@ -345,7 +345,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            crate::router::RouterError::InvalidRequest(String::from("Invalid volume parameter")),
+            crate::router::InvalidRequest(String::from("Invalid volume parameter")),
             res
         );
     }
@@ -406,7 +406,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            crate::router::RouterError::InvalidRequest(String::from("Invalid mute parameter")),
+            crate::router::InvalidRequest(String::from("Invalid mute parameter")),
             res
         );
     }

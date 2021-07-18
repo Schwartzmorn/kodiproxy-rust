@@ -25,24 +25,19 @@ impl crate::router::Handler for CECPowerOn {
             .find(|(param, _)| param == "device")
             .map(|(_, value)| crate::cec::CECLogicalAddress::from_str(&value))
             .unwrap_or(Ok(crate::cec::CECLogicalAddress::Broadcast))
-            .map_err(|_| {
-                crate::router::RouterError::InvalidRequest(String::from("Invalid device parameter"))
-            })?;
+            .map_err(|_| crate::router::InvalidRequest(String::from("Invalid device parameter")))?;
 
         self.connection
             .lock()
             .map_err(|_| {
-                crate::router::RouterError::HandlerError(
+                crate::router::HandlerError(
                     500,
                     String::from("Failed to acquire lock on CEC connection"),
                 )
             })?
             .power_on(address)
             .map_err(|e| {
-                crate::router::RouterError::HandlerError(
-                    500,
-                    format!("Failed to turn on device: {:?}", e),
-                )
+                crate::router::HandlerError(500, format!("Failed to turn on device: {:?}", e))
             })?;
 
         Ok(hyper::Response::builder()
@@ -66,24 +61,19 @@ impl crate::router::Handler for CECStandby {
             .find(|(param, _)| param == "device")
             .map(|(_, value)| crate::cec::CECLogicalAddress::from_str(&value))
             .unwrap_or(Ok(crate::cec::CECLogicalAddress::Broadcast))
-            .map_err(|_| {
-                crate::router::RouterError::InvalidRequest(String::from("Invalid device parameter"))
-            })?;
+            .map_err(|_| crate::router::InvalidRequest(String::from("Invalid device parameter")))?;
 
         self.connection
             .lock()
             .map_err(|_| {
-                crate::router::RouterError::HandlerError(
+                crate::router::HandlerError(
                     500,
                     String::from("Failed to acquire lock on CEC connection"),
                 )
             })?
             .standby(address)
             .map_err(|e| {
-                crate::router::RouterError::HandlerError(
-                    500,
-                    format!("Failed put device in standby: {:?}", e),
-                )
+                crate::router::HandlerError(500, format!("Failed put device in standby: {:?}", e))
             })?;
 
         Ok(hyper::Response::builder()

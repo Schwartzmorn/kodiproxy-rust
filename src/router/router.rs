@@ -1,5 +1,7 @@
 use crate::router::matcher::MatcherResult;
 
+pub use self::RouterError::*;
+
 #[async_trait::async_trait]
 pub trait Handler: Sync + Send {
     fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher>;

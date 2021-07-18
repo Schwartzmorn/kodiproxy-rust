@@ -187,12 +187,12 @@ impl JsonrpcHandler {
     fn f_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
         let msg = format!("{}: [{}]", msg, err);
         log::warn!("{}", msg);
-        crate::router::RouterError::ForwardingError(msg)
+        crate::router::ForwardingError(msg)
     }
 
     fn h_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
         let msg = format!("{}: [{}]", msg, err);
-        crate::router::RouterError::InvalidRequest(msg)
+        crate::router::InvalidRequest(msg)
     }
 }
 
