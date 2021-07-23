@@ -48,7 +48,7 @@ impl TestFixture {
         let rt_pouet = rt.clone();
         let serve = rt.spawn_blocking(move || {
             let configuration = configuration;
-            rt_pouet.block_on(kp::serve(&configuration, Some(receiver)));
+            rt_pouet.block_on(kp::serve_kp(&configuration, Some(receiver)));
         });
         // Wait for the server to have started
         std::thread::sleep(std::time::Duration::from_millis(200));

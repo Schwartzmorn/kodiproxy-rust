@@ -66,5 +66,5 @@ async fn main() {
         return;
     }
 
-    kp::serve(&configuration, None).await;
+    kp::serve_kp(&configuration, None).await;
 }

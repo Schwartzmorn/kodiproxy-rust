@@ -178,7 +178,7 @@ mod tests {
 
         let file_handler = super::GetFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::handlers::files::get_matcher(&hyper::Method::GET),
+            matcher: crate::files::get_matcher(&hyper::Method::GET),
         };
 
         let (parts, body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -218,7 +218,7 @@ mod tests {
 
         let file_handler = super::DeleteFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::handlers::files::get_matcher(&hyper::Method::DELETE),
+            matcher: crate::files::get_matcher(&hyper::Method::DELETE),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -250,7 +250,7 @@ mod tests {
 
         let file_handler = super::MoveFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::handlers::files::get_matcher("MOVE"),
+            matcher: crate::files::get_matcher("MOVE"),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();

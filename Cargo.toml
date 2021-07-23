@@ -8,6 +8,14 @@ edition = "2018"
 name = "kp"
 path = "src/kp.rs"
 
+[[bin]]
+name = "kodiproxy"
+path = "src/main.rs"
+
+[[bin]]
+name = "kp-cache"
+path = "src/cache-main.rs"
+
 [dependencies]
 async-std = "1"
 async-trait = "0.1"

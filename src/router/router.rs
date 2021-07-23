@@ -31,12 +31,12 @@ impl Router {
         }
     }
 
-    pub fn add_handler(mut self, handler: Box<dyn Handler>) -> Self {
+    pub fn add_handler(&mut self, handler: Box<dyn Handler>) -> &mut Self {
         self.handlers.push(handler);
         self
     }
 
-    pub fn add_handlers<T>(mut self, handlers: T) -> Self
+    pub fn add_handlers<T>(&mut self, handlers: T) -> &mut Self
     where
         T: IntoIterator<Item = Box<dyn Handler>>,
     {
@@ -76,6 +76,7 @@ impl Router {
         request: &hyper::Request<hyper::Body>,
     ) -> Result<&Box<dyn Handler>, RouterError> {
         log::info!("{:?} {:?}", request.method(), request.uri());
+        log::trace!("Headers: {:?}", request.headers());
         let mut server_error = RouterError::NotFound;
         for handler in self.handlers.iter() {
             match handler.get_matcher().matches(request) {
@@ -156,7 +157,8 @@ mod tests {
 
     #[tokio::test]
     async fn it_routes() {
-        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
+        let mut router = super::Router::new();
+        router.add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/jsonrpc", &hyper::Method::GET);
         let (parts, body) = router.handle(request).await.unwrap().into_parts();
@@ -169,7 +171,8 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_404_when_no_handler() {
-        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
+        let mut router = super::Router::new();
+        router.add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/not_found", &hyper::Method::GET);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();
@@ -179,7 +182,8 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_405() {
-        let router = super::Router::new().add_handler(Box::new(MockHandler::new(0)));
+        let mut router = super::Router::new();
+        router.add_handler(Box::new(MockHandler::new(0)));
 
         let request = get_request("/jsonrpc", &hyper::Method::POST);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();
@@ -190,7 +194,8 @@ mod tests {
     #[tokio::test]
     async fn it_answers_504_when_handler_timeouts() {
         // TODO speed up this test if timeout improves
-        let router = super::Router::new().add_handler(Box::new(MockHandler::new(6)));
+        let mut router = super::Router::new();
+        router.add_handler(Box::new(MockHandler::new(6)));
 
         let request = get_request("/jsonrpc", &hyper::Method::GET);
         let (parts, _) = router.handle(request).await.unwrap().into_parts();

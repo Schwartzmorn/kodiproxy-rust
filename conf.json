@@ -1,0 +1,23 @@
+{
+  "cec": {
+    "cecVersion": "4.0.4",
+    "fakeTarget": "http://localhost:8081"
+  },
+  "file": {
+    "rootPath": "target/test/path"
+  },
+  "jrpc": {
+    "target": "http://localhost:8081/jsonrpc"
+  },
+  "logging": {
+    "enabled": true,
+    "level": "INFO"
+  },
+  "receiver": {
+    "desiredInput": "AUXB",
+    "target": "http://localhost:8081"
+  },
+  "server": {
+    "host": "localhost:8079"
+  }
+}
