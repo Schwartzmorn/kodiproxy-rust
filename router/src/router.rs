@@ -1,10 +1,10 @@
-use crate::router::matcher::MatcherResult;
+use crate::matcher::MatcherResult;
 
 pub use self::RouterError::*;
 
 #[async_trait::async_trait]
 pub trait Handler: Sync + Send {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher>;
+    fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher>;
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
@@ -113,14 +113,14 @@ impl Router {
 #[cfg(test)]
 mod tests {
     struct MockHandler {
-        matcher: Box<dyn crate::router::matcher::Matcher>,
+        matcher: Box<dyn crate::matcher::Matcher>,
         wait: u64,
     }
 
     impl MockHandler {
         pub fn new(wait: u64) -> MockHandler {
             MockHandler {
-                matcher: crate::router::matcher::builder()
+                matcher: crate::matcher::builder()
                     .exact_path("/jsonrpc")
                     .with_method("GET")
                     .build()
@@ -132,7 +132,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl super::Handler for MockHandler {
-        fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+        fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher> {
             &self.matcher
         }
         async fn handle(

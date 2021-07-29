@@ -1,20 +1,14 @@
 mod handlers;
-pub mod repository;
 
-pub use self::repository::*;
-
-fn map_error<T: std::fmt::Debug>(e: &T, msg: &str, error_code: u16) -> crate::router::RouterError {
-    crate::router::HandlerError(error_code, format!("{}: {:?}", msg, e))
+fn map_error<T: std::fmt::Debug>(e: &T, msg: &str, error_code: u16) -> router::RouterError {
+    router::HandlerError(error_code, format!("{}: {:?}", msg, e))
 }
 
-#[cfg(test)]
-pub use self::repository::tests::TestRepo;
-
-fn get_matcher<T>(method: T) -> Box<dyn crate::router::matcher::Matcher>
+fn get_matcher<T>(method: T) -> Box<dyn router::matcher::Matcher>
 where
     hyper::Method: std::convert::TryFrom<T>,
 {
-    crate::router::matcher::builder()
+    router::matcher::builder()
         .regex_path("^/files/")
         .with_method(method)
         .build()
@@ -23,8 +17,8 @@ where
 
 pub fn get_file_handlers(
     configuration: &crate::configuration::FileConfiguration,
-) -> Vec<Box<dyn crate::router::Handler>> {
-    let file_repo = crate::files::FileRepository::new(&configuration.root_path);
+) -> Vec<Box<dyn router::Handler>> {
+    let file_repo = files::FileRepository::new(&configuration.root_path);
     log::info!(
         "Initializing file repository in {:?}",
         &configuration.root_path

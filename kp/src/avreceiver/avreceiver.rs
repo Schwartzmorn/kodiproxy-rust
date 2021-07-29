@@ -35,7 +35,7 @@ pub struct AVReceiverBuilder {
 impl AVReceiverBuilder {
     /// Gives the url of the av receiver (scheme + authority)
     pub fn with_url(mut self, url: String) -> AVReceiverBuilder {
-        let (scheme, authority, _) = crate::router::parse_url(&url);
+        let (scheme, authority, _) = router::parse_url(&url);
 
         self.scheme = scheme;
         self.authority = authority;
@@ -151,7 +151,7 @@ impl AVReceiver {
         }
     }
 
-    async fn send_command(&self, cmd: String) -> Result<Item, crate::router::RouterError> {
+    async fn send_command(&self, cmd: String) -> Result<Item, router::RouterError> {
         self.send_command_inner(cmd, true).await
     }
 
@@ -159,7 +159,7 @@ impl AVReceiver {
         &self,
         cmd: String,
         expect_body: bool,
-    ) -> Result<Item, crate::router::RouterError> {
+    ) -> Result<Item, router::RouterError> {
         let uri = hyper::Uri::builder()
             .scheme(self.scheme.as_str())
             .authority(self.authority.as_str())
@@ -203,7 +203,7 @@ impl AVReceiver {
         }
     }
 
-    async fn get_status(&self) -> Result<Item, crate::router::RouterError> {
+    async fn get_status(&self) -> Result<Item, router::RouterError> {
         self.send_command(String::from(CMD_STATUS)).await
     }
 
@@ -241,10 +241,10 @@ impl AVReceiver {
         msg: &str,
         cmd: &String,
         err: T,
-    ) -> crate::router::RouterError {
+    ) -> router::RouterError {
         let msg = format!("{} '{}': [{}]", msg, cmd, err);
         log::warn!("{}", msg);
-        crate::router::HandlerError(502, msg)
+        router::HandlerError(502, msg)
     }
 }
 

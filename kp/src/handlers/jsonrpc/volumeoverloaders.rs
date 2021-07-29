@@ -42,7 +42,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
         _parts: hyper::http::request::Parts,
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         _handler: &crate::handlers::jsonrpc::JsonrpcHandler,
-    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, crate::router::RouterError> {
+    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
         let volume = json_request.params().and_then(|value| {
             if let serde_json::Value::Object(params) = value {
                 params.get("volume")
@@ -79,7 +79,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
                     json_request.id(),
                 )
             })
-            .ok_or(crate::router::InvalidRequest(String::from(
+            .ok_or(router::InvalidRequest(String::from(
                 "Invalid volume parameter",
             )))
     }
@@ -100,7 +100,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
         _parts: hyper::http::request::Parts,
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         _handler: &crate::handlers::jsonrpc::JsonrpcHandler,
-    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, crate::router::RouterError> {
+    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
         let mute = json_request.params().and_then(|value| {
             if let serde_json::Value::Object(params) = value {
                 params.get("mute")
@@ -131,7 +131,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
                     json_request.id(),
                 )
             })
-            .ok_or(crate::router::InvalidRequest(String::from(
+            .ok_or(router::InvalidRequest(String::from(
                 "Invalid mute parameter",
             )))
     }
@@ -173,7 +173,7 @@ impl JRPCGetProperties {
         json_request: &crate::handlers::jsonrpc::JRPCQuery,
         handler: &crate::handlers::jsonrpc::JsonrpcHandler,
         properties: Vec<String>,
-    ) -> Result<serde_json::Map<String, serde_json::Value>, crate::router::RouterError> {
+    ) -> Result<serde_json::Map<String, serde_json::Value>, router::RouterError> {
         if !properties.is_empty() {
             let query = crate::handlers::jsonrpc::JRPCQuery::new(
                 json_request.method().to_owned(),
@@ -204,7 +204,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
         parts: hyper::http::request::Parts,
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         handler: &crate::handlers::jsonrpc::JsonrpcHandler,
-    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, crate::router::RouterError> {
+    ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
         if let Some(serde_json::Value::Object(params)) = json_request.params() {
             if let Some(serde_json::Value::Array(properties)) = params.get("properties") {
                 let mut volume_properties = Vec::<String>::new();
@@ -246,7 +246,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
                 ));
             }
         }
-        Err(crate::router::InvalidRequest(String::from(
+        Err(router::InvalidRequest(String::from(
             "Invalid properties parameter",
         )))
     }
@@ -345,7 +345,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            crate::router::InvalidRequest(String::from("Invalid volume parameter")),
+            router::InvalidRequest(String::from("Invalid volume parameter")),
             res
         );
     }
@@ -406,7 +406,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            crate::router::InvalidRequest(String::from("Invalid mute parameter")),
+            router::InvalidRequest(String::from("Invalid mute parameter")),
             res
         );
     }

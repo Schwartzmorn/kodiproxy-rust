@@ -4,7 +4,6 @@ pub mod matcher;
 pub mod router;
 
 use futures::FutureExt;
-use std::str::FromStr;
 
 pub fn parse_url(url: &String) -> (String, String, Option<String>) {
     let url_re: regex::Regex =
@@ -42,24 +41,13 @@ async fn shutdown_signal(exit_channel: futures::channel::oneshot::Receiver<()>) 
     }
 }
 
-pub fn get_socketaddr(
-    configuration: &crate::configuration::ServerConfiguration,
-) -> std::net::SocketAddr {
-    let res = std::net::SocketAddr::from_str(configuration.host.as_str())
-        .expect("Incorrect host in server configuration");
-
-    res
-}
-
 pub async fn serve<F>(
-    configuration: &crate::configuration::ServerConfiguration,
+    host: std::net::SocketAddr,
     exit_channel: Option<futures::channel::oneshot::Receiver<()>>,
     register_handlers: F,
 ) where
     F: FnOnce(&mut Router),
 {
-    let addr = get_socketaddr(&configuration);
-
     let mut exit_sender: Option<futures::channel::oneshot::Sender<()>> = None;
 
     let exit_receiver = match exit_channel {
@@ -79,21 +67,34 @@ pub async fn serve<F>(
     register_handlers(&mut router);
     let router = std::sync::Arc::new(router);
 
-    let make_svc = hyper::service::make_service_fn(move |_conn| {
-        let router = router.clone();
-        async move {
-            Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
-                let router = router.clone();
-                async move { router.handle(req).await }
-            }))
-        }
-    });
+    let make_svc =
+        hyper::service::make_service_fn(move |connection: &hyper::server::conn::AddrStream| {
+            let remote_address = connection.remote_addr();
 
-    let server = hyper::Server::bind(&addr).serve(make_svc);
+            match remote_address {
+                std::net::SocketAddr::V4(addr) => {
+                    log::debug!("Got connection from ipv4 {:?}", addr.ip());
+                }
+                std::net::SocketAddr::V6(addr) => {
+                    log::debug!("Got connection from ipv6 {:?}", addr.ip());
+                    log::debug!("IPv4 {:?}", addr.ip().to_ipv4());
+                }
+            }
+
+            let router = router.clone();
+            async move {
+                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
+                    let router = router.clone();
+                    async move { router.handle(req).await }
+                }))
+            }
+        });
+
+    let server = hyper::Server::bind(&host).serve(make_svc);
 
     let graceful = server.with_graceful_shutdown(shutdown_signal(exit_receiver));
 
-    log::info!("Server now listening on {:?}", addr);
+    log::info!("Server now listening on {:?}", host);
 
     if let Err(e) = graceful.await {
         log::error!("server error: {}", e);

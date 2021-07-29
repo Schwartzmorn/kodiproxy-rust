@@ -10,7 +10,7 @@ pub fn get_jrpc_handler(
     configuration: &crate::configuration::JRPCConfiguration,
     avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
     cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
-) -> Box<dyn crate::router::Handler> {
+) -> Box<dyn router::Handler> {
     let mut builder = jsonrpc::JsonrpcHandler::builder()
         .with_url(&configuration.target)
         .add_overloader(

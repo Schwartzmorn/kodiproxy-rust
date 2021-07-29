@@ -2,26 +2,26 @@ use std::convert::TryInto;
 
 /// Handler that takes care of PUT requests
 pub struct DeleteFileHandler {
-    pub file_repo: std::sync::Arc<crate::files::FileRepository>,
-    pub matcher: Box<dyn crate::router::matcher::Matcher>,
+    pub file_repo: std::sync::Arc<files::FileRepository>,
+    pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 /// Handler that takes care of GET requests
 pub struct GetFileHandler {
-    pub file_repo: std::sync::Arc<crate::files::FileRepository>,
-    pub matcher: Box<dyn crate::router::matcher::Matcher>,
+    pub file_repo: std::sync::Arc<files::FileRepository>,
+    pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 /// Handler that takes care of GET requests
 pub struct MoveFileHandler {
-    pub file_repo: std::sync::Arc<crate::files::FileRepository>,
-    pub matcher: Box<dyn crate::router::matcher::Matcher>,
+    pub file_repo: std::sync::Arc<files::FileRepository>,
+    pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 /// Handler that takes care of PUT requests
 pub struct PutFileHandler {
-    pub file_repo: std::sync::Arc<crate::files::FileRepository>,
-    pub matcher: Box<dyn crate::router::matcher::Matcher>,
+    pub file_repo: std::sync::Arc<files::FileRepository>,
+    pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 fn get_path_from_uri(uri: &http::Uri) -> &str {
@@ -29,15 +29,15 @@ fn get_path_from_uri(uri: &http::Uri) -> &str {
 }
 
 #[async_trait::async_trait]
-impl crate::router::Handler for DeleteFileHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+impl router::Handler for DeleteFileHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let repo = self
             .file_repo
             .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
@@ -52,15 +52,15 @@ impl crate::router::Handler for DeleteFileHandler {
 }
 
 #[async_trait::async_trait]
-impl crate::router::Handler for GetFileHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+impl router::Handler for GetFileHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let repo = self
             .file_repo
             .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
@@ -81,19 +81,19 @@ impl crate::router::Handler for GetFileHandler {
 }
 
 #[async_trait::async_trait]
-impl crate::router::Handler for MoveFileHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+impl router::Handler for MoveFileHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let destination: http::Uri = request
             .headers()
             .get("destination")
-            .ok_or(crate::router::RouterError::HandlerError(
+            .ok_or(router::RouterError::HandlerError(
                 400,
                 String::from("Missing destination"),
             ))?
@@ -120,16 +120,17 @@ impl crate::router::Handler for MoveFileHandler {
 }
 
 #[async_trait::async_trait]
-impl crate::router::Handler for PutFileHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+impl router::Handler for PutFileHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let (parts, body) = request.into_parts();
+
         let file_content = hyper::body::to_bytes(body)
             .await
             .map(|b| b.to_vec())
@@ -150,20 +151,20 @@ impl crate::router::Handler for PutFileHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::router::Handler;
+    use router::Handler;
 
     use std::io::prelude::*;
 
     static TEST_PATH: &str = "target/test/file_handlers_tests";
 
     #[rstest::fixture]
-    fn file_repo(#[default("test")] test_name: &str) -> crate::files::TestRepo {
-        crate::files::TestRepo::new(std::path::PathBuf::from(TEST_PATH).join(test_name))
+    fn file_repo(#[default("test")] test_name: &str) -> files::tests::TestRepo {
+        files::tests::TestRepo::new(std::path::PathBuf::from(TEST_PATH).join(test_name))
     }
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn it_replies_with_the_last_version(#[with("get")] file_repo: crate::files::TestRepo) {
+    async fn it_replies_with_the_last_version(#[with("get")] file_repo: files::tests::TestRepo) {
         let path = file_repo.get_path("keepass/pdb.kdbx");
         std::fs::create_dir_all(&path).unwrap();
         let mut file = std::fs::File::create(&path.join("current")).expect("Could not create file");
@@ -178,7 +179,7 @@ mod tests {
 
         let file_handler = super::GetFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::files::get_matcher(&hyper::Method::GET),
+            matcher: crate::handlers::files::get_matcher(&hyper::Method::GET),
         };
 
         let (parts, body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -203,7 +204,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn it_deletes(#[with("delete")] file_repo: crate::files::TestRepo) {
+    async fn it_deletes(#[with("delete")] file_repo: files::tests::TestRepo) {
         let path = file_repo.get_path("keepass/pdb.kdbx");
         std::fs::create_dir_all(&path).unwrap();
         let mut file = std::fs::File::create(&path.join("current")).expect("Could not create file");
@@ -218,7 +219,7 @@ mod tests {
 
         let file_handler = super::DeleteFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::files::get_matcher(&hyper::Method::DELETE),
+            matcher: crate::handlers::files::get_matcher(&hyper::Method::DELETE),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -231,7 +232,7 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn it_moves(#[with("move")] file_repo: crate::files::TestRepo) {
+    async fn it_moves(#[with("move")] file_repo: files::tests::TestRepo) {
         let path_from = file_repo.get_path("keepass/pdb.kdbx.tmp");
         let path_to = file_repo.get_path("keepass/pdb.kdbx");
 
@@ -250,7 +251,7 @@ mod tests {
 
         let file_handler = super::MoveFileHandler {
             file_repo: file_repo.get_repo(),
-            matcher: crate::files::get_matcher("MOVE"),
+            matcher: crate::handlers::files::get_matcher("MOVE"),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();

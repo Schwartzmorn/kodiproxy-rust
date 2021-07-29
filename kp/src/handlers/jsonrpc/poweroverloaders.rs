@@ -30,7 +30,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetSystemProperties {
         _parts: hyper::http::request::Parts,
         json_request: super::jsonrpc::JRPCQuery,
         _handler: &super::jsonrpc::JsonrpcHandler,
-    ) -> Result<super::jsonrpc::JRPCResponse, crate::router::RouterError> {
+    ) -> Result<super::jsonrpc::JRPCResponse, router::RouterError> {
         if let Some(serde_json::Value::Object(params)) = json_request.params() {
             if let Some(serde_json::Value::Array(properties)) = params.get("properties") {
                 let mut result = serde_json::Map::<String, serde_json::Value>::new();
@@ -51,7 +51,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetSystemProperties {
                 ));
             }
         }
-        Err(crate::router::InvalidRequest(String::from(
+        Err(router::InvalidRequest(String::from(
             "Invalid properties parameter",
         )))
     }
@@ -64,7 +64,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
         _parts: hyper::http::request::Parts,
         json_request: super::jsonrpc::JRPCQuery,
         _handler: &super::jsonrpc::JsonrpcHandler,
-    ) -> Result<super::jsonrpc::JRPCResponse, crate::router::RouterError> {
+    ) -> Result<super::jsonrpc::JRPCResponse, router::RouterError> {
         let interface = self.cec_interface.clone();
         let async_cec = move || async move {
             let res = interface
@@ -73,7 +73,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
             if let Ok(Ok(())) = res {
                 Ok(())
             } else {
-                Err(crate::router::HandlerError(
+                Err(router::HandlerError(
                     500,
                     format!("Failed to switch off CEC"),
                 ))

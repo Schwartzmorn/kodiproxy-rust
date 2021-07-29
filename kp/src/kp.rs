@@ -2,9 +2,9 @@ mod avreceiver;
 mod cec;
 pub mod configuration;
 mod dbus;
-mod files;
 mod handlers;
-mod router;
+
+use std::str::FromStr;
 
 fn register_handlers_kp(
     configuration: &configuration::ProxyConfiguration,
@@ -19,7 +19,7 @@ fn register_handlers_kp(
             avreceiver.clone(),
             cec_interface.clone(),
         ))
-        .add_handlers(files::get_file_handlers(&configuration.file))
+        .add_handlers(handlers::files::get_file_handlers(&configuration.file))
         .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()));
 }
 
@@ -27,7 +27,8 @@ pub async fn serve_kp(
     configuration: &configuration::ProxyConfiguration,
     exit_channel: Option<futures::channel::oneshot::Receiver<()>>,
 ) {
-    let addr = router::get_socketaddr(&configuration.server);
+    let addr = std::net::SocketAddr::from_str(&configuration.server.host.as_str())
+        .expect("Incorrect host in server configuration");
 
     let connection = crate::dbus::AvahiConnection::new(addr.port());
 
@@ -36,7 +37,7 @@ pub async fn serve_kp(
         Err(e) => log::warn!("Failed to register server in Avahi: {:?}", e),
     }
 
-    router::serve(&configuration.server, exit_channel, |router| {
+    router::serve(addr, exit_channel, |router| {
         register_handlers_kp(configuration, router)
     })
     .await;

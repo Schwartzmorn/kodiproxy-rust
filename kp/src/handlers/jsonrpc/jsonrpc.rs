@@ -9,7 +9,7 @@ pub trait JsonrpcOverloader: Sync + Send {
         parts: hyper::http::request::Parts,
         json_request: JRPCQuery,
         handler: &JsonrpcHandler,
-    ) -> Result<JRPCResponse, crate::router::RouterError>;
+    ) -> Result<JRPCResponse, router::RouterError>;
 }
 
 /// Builder for [JsonrpcHandler](crate::jsonrpc::JsonrpcHandler)
@@ -27,7 +27,7 @@ pub struct JsonrpcHandlerBuilder {
 pub struct JsonrpcHandler {
     scheme: String,
     authority: String,
-    matcher: Box<dyn crate::router::matcher::Matcher>,
+    matcher: Box<dyn router::matcher::Matcher>,
     overloaders: std::collections::HashMap<String, Box<dyn JsonrpcOverloader>>,
     path: String,
 }
@@ -84,7 +84,7 @@ impl JRPCResponse {
 impl JsonrpcHandlerBuilder {
     /// Gives the full url (optionally the path) to target
     pub fn with_url(mut self, url: &String) -> JsonrpcHandlerBuilder {
-        let (scheme, authority, path) = crate::router::parse_url(url);
+        let (scheme, authority, path) = router::parse_url(url);
 
         self.scheme = scheme;
         self.authority = authority;
@@ -110,7 +110,7 @@ impl JsonrpcHandlerBuilder {
         Box::from(JsonrpcHandler {
             scheme: self.scheme,
             authority: self.authority,
-            matcher: crate::router::matcher::builder()
+            matcher: router::matcher::builder()
                 .exact_path(&self.path)
                 .build()
                 .unwrap(),
@@ -135,7 +135,7 @@ impl JsonrpcHandler {
         &self,
         parts: hyper::http::request::Parts,
         body: hyper::body::Bytes,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let uri = hyper::Uri::builder()
             .scheme(self.scheme.as_str())
             .authority(self.authority.as_str())
@@ -165,7 +165,7 @@ impl JsonrpcHandler {
         &self,
         parts: hyper::http::request::Parts,
         query: JRPCQuery,
-    ) -> Result<JRPCResponse, crate::router::RouterError> {
+    ) -> Result<JRPCResponse, router::RouterError> {
         let body = hyper::body::Bytes::from(serde_json::to_string(&query).unwrap());
         let result = self.forward(parts, body).await?;
         // TODO: better error handling
@@ -184,28 +184,28 @@ impl JsonrpcHandler {
         Ok(json)
     }
 
-    fn f_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
+    fn f_err<T: std::fmt::Display>(msg: &str, err: &T) -> router::RouterError {
         let msg = format!("{}: [{}]", msg, err);
         log::warn!("{}", msg);
-        crate::router::ForwardingError(msg)
+        router::ForwardingError(msg)
     }
 
-    fn h_err<T: std::fmt::Display>(msg: &str, err: &T) -> crate::router::RouterError {
+    fn h_err<T: std::fmt::Display>(msg: &str, err: &T) -> router::RouterError {
         let msg = format!("{}: [{}]", msg, err);
-        crate::router::InvalidRequest(msg)
+        router::InvalidRequest(msg)
     }
 }
 
 #[async_trait::async_trait]
-impl crate::router::Handler for JsonrpcHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+impl router::Handler for JsonrpcHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, crate::router::RouterError> {
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let (parts, body) = request.into_parts();
         let body = hyper::body::to_bytes(body)
             .await
@@ -244,7 +244,7 @@ impl crate::router::Handler for JsonrpcHandler {
 #[cfg(test)]
 mod tests {
     use crate::handlers::jsonrpc::JsonrpcOverloader;
-    use crate::router::Handler;
+    use router::Handler;
 
     struct MockOverloader {}
 
@@ -255,7 +255,7 @@ mod tests {
             _parts: hyper::http::request::Parts,
             _body: crate::handlers::jsonrpc::JRPCQuery,
             _handler: &super::JsonrpcHandler,
-        ) -> Result<super::JRPCResponse, crate::router::RouterError> {
+        ) -> Result<super::JRPCResponse, router::RouterError> {
             Ok(super::JRPCResponse::new(None, Some(1)))
         }
     }
@@ -302,7 +302,7 @@ mod tests {
         let error = jrpc.handle(req).await.unwrap_err();
 
         match error {
-            crate::router::RouterError::InvalidRequest(msg) => {
+            router::RouterError::InvalidRequest(msg) => {
                 assert!(msg.starts_with("Jsonrpc request body is not valid json"))
             }
             _ => panic!("Wrong type of error"),

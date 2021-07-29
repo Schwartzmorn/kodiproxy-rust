@@ -1,13 +1,13 @@
 static PANIC_MSG: &'static str = "Failed to exit server gracefully, panicing...";
 
 struct ExitHandler {
-    matcher: Box<dyn crate::router::matcher::Matcher>,
+    matcher: Box<dyn crate::matcher::Matcher>,
     sender: std::sync::Mutex<Option<futures::channel::oneshot::Sender<()>>>,
 }
 
 #[async_trait::async_trait]
 impl crate::router::Handler for ExitHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::router::matcher::Matcher> {
+    fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher> {
         &self.matcher
     }
 
@@ -37,7 +37,7 @@ impl crate::router::Handler for ExitHandler {
 pub fn get_handler(
     exit_sender: futures::channel::oneshot::Sender<()>,
 ) -> Box<dyn crate::router::Handler> {
-    let matcher = crate::router::matcher::builder()
+    let matcher = crate::matcher::builder()
         .exact_path(String::from("/exit"))
         .with_method(&hyper::Method::GET)
         .build()
