@@ -6,7 +6,7 @@ edition = "2018"
 
 [lib]
 name = "kp"
-path = "src/kp.rs"
+path = "src/lib.rs"
 
 [[bin]]
 name = "kodiproxy"

@@ -1,0 +1,21 @@
+[package]
+name = "cache"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+name = "kp_cache"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kp_cache"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = "0.1"
+files = { path = "../files" }
+http = "0.2"
+hyper = "0.14"
+log = "0.4"
+router = { path = "../router" }
+tokio = "1"

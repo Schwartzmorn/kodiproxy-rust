@@ -226,6 +226,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
 
 [[package]]
+name = "cache"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "files",
+ "http",
+ "hyper",
+ "log",
+ "router",
+ "tokio",
+]
+
+[[package]]
 name = "cache-padded"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,3 +1,3 @@
 [workspace]
 
-members = ["files", "kp", "router"]
+members = ["cache", "files", "kp", "router"]
