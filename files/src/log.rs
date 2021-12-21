@@ -8,19 +8,35 @@ pub struct FileLog {
     pub entries: Vec<FileLogEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "type")]
 pub enum FileLogEntryType {
-    Creation(u32, String),
-    Deletion(),
-    Modification(u32, String),
-    MoveTo(std::path::PathBuf),
-    MoveFrom(u32, String, std::path::PathBuf),
+    Creation {
+        version: u32,
+        hash: String,
+    },
+    Deletion,
+    Modification {
+        version: u32,
+        hash: String,
+    },
+    MoveTo {
+        #[serde(rename = "pathTo")]
+        path_to: std::path::PathBuf,
+    },
+    MoveFrom {
+        version: u32,
+        hash: String,
+        #[serde(rename = "pathFrom")]
+        path_from: std::path::PathBuf,
+    },
 }
 
+#[derive(serde::Serialize)]
 pub struct FileLogEntry {
     pub(super) timestamp: chrono::DateTime<chrono::Utc>,
     pub(super) address: std::net::IpAddr,
-    pub(super) entry_type: FileLogEntryType,
+    pub(super) entry: FileLogEntryType,
 }
 
 impl FileLogWriter {
@@ -34,7 +50,7 @@ impl FileLogWriter {
 
     pub fn append(&mut self, entry_type: FileLogEntryType) -> Result<(), std::io::Error> {
         let entry = FileLogEntry {
-            entry_type,
+            entry: entry_type,
             timestamp: chrono::Utc::now(),
             address: [127, 0, 0, 1].into(), // TODO change this
         };
@@ -45,19 +61,23 @@ impl FileLogWriter {
 impl FileLogEntryType {
     pub fn encode(&self, writer: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
         match &self {
-            FileLogEntryType::Creation(version, hash) => {
+            FileLogEntryType::Creation { version, hash } => {
                 write!(writer, "Creation[{}:{}]", version, hash)
             }
-            FileLogEntryType::Deletion() => {
+            FileLogEntryType::Deletion => {
                 write!(writer, "Deletion[]")
             }
-            FileLogEntryType::Modification(version, hash) => {
+            FileLogEntryType::Modification { version, hash } => {
                 write!(writer, "Modification[{}:{}]", version, hash)
             }
-            FileLogEntryType::MoveTo(path_to) => {
+            FileLogEntryType::MoveTo { path_to } => {
                 write!(writer, "MoveTo[::{}]", path_to.to_string_lossy())
             }
-            FileLogEntryType::MoveFrom(version, hash, path_from) => write!(
+            FileLogEntryType::MoveFrom {
+                version,
+                hash,
+                path_from,
+            } => write!(
                 writer,
                 "MoveFrom[{}:{}:{}]",
                 version,
@@ -91,28 +111,33 @@ impl FileLogEntryType {
                 match &captures["type"] {
                     "Creation" => {
                         if let (Some(version), Some(hash)) = (version, hash) {
-                            Some(FileLogEntryType::Creation(version, hash))
+                            Some(FileLogEntryType::Creation { version, hash })
                         } else {
                             None
                         }
                     }
                     "Modification" => {
                         if let (Some(version), Some(hash)) = (version, hash) {
-                            Some(FileLogEntryType::Modification(version, hash))
+                            Some(FileLogEntryType::Modification { version, hash })
                         } else {
                             None
                         }
                     }
-                    "Deletion" => Some(FileLogEntryType::Deletion()),
+                    "Deletion" => Some(FileLogEntryType::Deletion),
                     "MoveTo" => {
-                        let path = values
+                        let path_to = values
                             .name("path")
                             .map(|m| std::path::PathBuf::from(m.as_str()))?;
-                        Some(FileLogEntryType::MoveTo(path))
+                        Some(FileLogEntryType::MoveTo { path_to })
                     }
                     "MoveFrom" => {
-                        if let (Some(version), Some(hash), Some(path)) = (version, hash, path) {
-                            Some(FileLogEntryType::MoveFrom(version, hash, path))
+                        if let (Some(version), Some(hash), Some(path_from)) = (version, hash, path)
+                        {
+                            Some(FileLogEntryType::MoveFrom {
+                                version,
+                                hash,
+                                path_from,
+                            })
                         } else {
                             None
                         }
@@ -127,7 +152,7 @@ impl FileLogEntryType {
 impl FileLogEntry {
     pub fn encode(&self, writer: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
         write!(writer, "{:?} [{:?}] ", self.timestamp, self.address)?;
-        self.entry_type.encode(writer)?;
+        self.entry.encode(writer)?;
         write!(writer, "\n")?;
         Ok(())
     }
@@ -147,7 +172,7 @@ impl FileLogEntry {
             Some(FileLogEntry {
                 timestamp,
                 address,
-                entry_type,
+                entry: entry_type,
             })
         });
         if res.is_none() {

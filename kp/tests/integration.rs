@@ -66,11 +66,11 @@ impl Drop for TestFixture {
     fn drop(&mut self) {
         let exit_channel = std::mem::replace(&mut self.exit_channel, None).unwrap();
 
-        if self.file_path.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&self.file_path) {
-                log::error!("Failed to clean the folder after test: {:?}", e);
-            }
-        }
+        // if self.file_path.exists() {
+        //     if let Err(e) = std::fs::remove_dir_all(&self.file_path) {
+        //         log::error!("Failed to clean the folder after test: {:?}", e);
+        //     }
+        // }
 
         if let Err(e) = exit_channel.send(()) {
             log::error!("Failed to send the termination signal: {:?}", e);
@@ -123,11 +123,13 @@ async fn it_allows_saving_files(#[with("files", 8079)] fixture: TestFixture) {
 
     assert_eq!(200, parts.status);
     assert_eq!("Fake content", body.as_str());
+
+    // TODO check versions
 }
 
 #[rstest::rstest]
 #[tokio::test]
-async fn it_imbues_jrpc_queries(#[with("files", 8078)] fixture: TestFixture) {
+async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
     let receiver_response = r#"<?xml version="1.0" encoding="utf-8" ?>
 <item>
 <MasterVolume><value>-65</value></MasterVolume>

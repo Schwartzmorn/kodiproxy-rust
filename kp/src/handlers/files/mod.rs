@@ -40,5 +40,13 @@ pub fn get_file_handlers(
             file_repo: file_repo.clone(),
             matcher: get_matcher(&hyper::Method::PUT),
         }),
+        Box::from(handlers::FileVersionsHandler {
+            file_repo: file_repo.clone(),
+            matcher: router::matcher::builder()
+                .regex_path("^/file-versions/")
+                .with_method(&hyper::Method::GET)
+                .build()
+                .unwrap(),
+        }),
     ]
 }

@@ -24,6 +24,11 @@ pub struct PutFileHandler {
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
+pub struct FileVersionsHandler {
+    pub file_repo: std::sync::Arc<files::FileRepository>,
+    pub matcher: Box<dyn router::matcher::Matcher>,
+}
+
 fn get_path_from_uri(uri: &http::Uri) -> &str {
     &uri.path()[7..]
 }
@@ -68,6 +73,8 @@ impl router::Handler for GetFileHandler {
         let filename = repo.get_filename()?;
 
         let data = repo.get_current_version()?;
+
+        log::info!("Sent file with size {}", &data.len());
 
         Ok(hyper::Response::builder()
             .status(200)
@@ -145,6 +152,31 @@ impl router::Handler for PutFileHandler {
         Ok(hyper::Response::builder()
             .status(201)
             .body(hyper::Body::empty())
+            .unwrap())
+    }
+}
+
+#[async_trait::async_trait]
+impl router::Handler for FileVersionsHandler {
+    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
+        &self.matcher
+    }
+
+    async fn handle(
+        &self,
+        request: hyper::Request<hyper::Body>,
+    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
+        let repo = self
+            .file_repo
+            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+
+        let log = &repo.get_log().map_err(|_| router::NotFound)?;
+
+        Ok(hyper::Response::builder()
+            .status(200)
+            .body(hyper::Body::from(
+                serde_json::to_string(&log.entries).unwrap(),
+            ))
             .unwrap())
     }
 }
@@ -261,5 +293,26 @@ mod tests {
         assert!(path_from.join("0").exists());
         assert!(!path_from.join("current").exists());
         assert!(path_to.join("current").exists());
+
+        let req = hyper::Request::builder()
+            .uri("/files/keepass/pdb.kdbx.tmp")
+            .header("destination", "/files/keepass/pdb.kdbx")
+            .method("MOVE")
+            .body(hyper::Body::empty())
+            .unwrap();
+
+        let versions_handlers = super::FileVersionsHandler {
+            file_repo: file_repo.get_repo(),
+            matcher: crate::handlers::files::get_matcher("GET"),
+        };
+
+        let (parts, body) = versions_handlers.handle(req).await.unwrap().into_parts();
+
+        assert_eq!(200, parts.status);
+
+        let body = hyper::body::to_bytes(body).await.unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"MoveTo","pathTo":"keepass/pdb.kdbx"}}\]$"#).unwrap();
+        assert!(re.is_match(&body));
     }
 }

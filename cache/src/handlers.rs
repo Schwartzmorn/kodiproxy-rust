@@ -35,7 +35,7 @@ impl router::Handler for GetFileHandler {
 
         let repo = self
             .file_repo
-            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+            .get_single_file_repo(get_path_from_uri(&parts.uri), false)?;
 
         let filename = repo.get_filename()?;
 

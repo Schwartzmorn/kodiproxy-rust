@@ -4,27 +4,12 @@ pub struct JRPCSetVolume {
     receiver: std::sync::Arc<dyn AVReceiverInterface>,
 }
 
-#[derive(serde::Deserialize)]
-struct SetVolume {
-    pub volume: serde_json::Value,
-}
-
 pub struct JRPCSetMute {
     receiver: std::sync::Arc<dyn AVReceiverInterface>,
 }
 
-#[derive(serde::Deserialize)]
-struct SetMute {
-    pub mute: bool,
-}
-
 pub struct JRPCGetProperties {
     receiver: std::sync::Arc<dyn AVReceiverInterface>,
-}
-
-#[derive(serde::Deserialize)]
-struct GetProperties {
-    pub properties: Vec<String>,
 }
 
 impl JRPCSetVolume {

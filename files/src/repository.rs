@@ -103,7 +103,6 @@ impl SingleFileRepository {
         }
     }
 
-    #[allow(dead_code)]
     pub fn get_log(&self) -> Result<crate::log::FileLog, std::io::Error> {
         crate::log::FileLog::new(self.get_path())
     }
@@ -187,11 +186,14 @@ impl SingleFileRepository {
         let hash = digest(data);
 
         if is_create {
-            self.log(log, crate::log::FileLogEntryType::Creation(version, hash));
+            self.log(
+                log,
+                crate::log::FileLogEntryType::Creation { version, hash },
+            );
         } else {
             self.log(
                 log,
-                crate::log::FileLogEntryType::Modification(version, hash),
+                crate::log::FileLogEntryType::Modification { version, hash },
             );
         };
 
@@ -203,7 +205,7 @@ impl SingleFileRepository {
 
         self.delete_no_log()?;
 
-        self.log(log, crate::log::FileLogEntryType::Deletion());
+        self.log(log, crate::log::FileLogEntryType::Deletion);
 
         Ok(())
     }
@@ -220,14 +222,20 @@ impl SingleFileRepository {
 
         self.log(
             log_from,
-            crate::log::FileLogEntryType::MoveTo(to_repo.file_dir.to_owned()),
+            crate::log::FileLogEntryType::MoveTo {
+                path_to: to_repo.file_dir.to_owned(),
+            },
         );
 
         let hash = digest(&file_content);
 
         to_repo.log(
             log_to,
-            crate::log::FileLogEntryType::MoveFrom(version, hash, self.file_dir.to_owned()),
+            crate::log::FileLogEntryType::MoveFrom {
+                version,
+                hash,
+                path_from: self.file_dir.to_owned(),
+            },
         );
 
         Ok(())
@@ -278,12 +286,18 @@ pub mod tests {
 
         assert_eq!(2, log.entries.len());
         assert!(std::matches!(
-            &log.entries[0].entry_type,
-            crate::log::FileLogEntryType::Creation(0, _)
+            &log.entries[0].entry,
+            crate::log::FileLogEntryType::Creation {
+                version: 0,
+                hash: _
+            }
         ));
         assert!(std::matches!(
-            &log.entries[1].entry_type,
-            crate::log::FileLogEntryType::Modification(1, _)
+            &log.entries[1].entry,
+            crate::log::FileLogEntryType::Modification {
+                version: 1,
+                hash: _
+            }
         ));
     }
 
@@ -307,12 +321,15 @@ pub mod tests {
 
         assert_eq!(2, log.entries.len());
         assert!(std::matches!(
-            &log.entries[0].entry_type,
-            crate::log::FileLogEntryType::Creation(0, _)
+            &log.entries[0].entry,
+            crate::log::FileLogEntryType::Creation {
+                version: 0,
+                hash: _
+            }
         ));
         assert!(std::matches!(
-            &log.entries[1].entry_type,
-            crate::log::FileLogEntryType::Deletion()
+            &log.entries[1].entry,
+            crate::log::FileLogEntryType::Deletion
         ));
     }
 
@@ -340,14 +357,14 @@ pub mod tests {
 
         assert_eq!(2, log_from.entries.len());
         assert!(std::matches!(
-            &log_from.entries[1].entry_type,
-            crate::log::FileLogEntryType::MoveTo(path) if path == &std::path::PathBuf::from("new_file.txt")
+            &log_from.entries[1].entry,
+            crate::log::FileLogEntryType::MoveTo{ path_to }  if path_to == &std::path::PathBuf::from("new_file.txt")
         ));
 
         assert_eq!(1, log_to.entries.len());
         assert!(std::matches!(
-            &log_to.entries[0].entry_type,
-            crate::log::FileLogEntryType::MoveFrom(_, _, path) if path == &std::path::PathBuf::from("new_file.txt.tmp")
+            &log_to.entries[0].entry,
+            crate::log::FileLogEntryType::MoveFrom{version: _, hash: _, path_from} if path_from == &std::path::PathBuf::from("new_file.txt.tmp")
         ));
     }
 }
