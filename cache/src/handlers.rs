@@ -19,9 +19,7 @@ impl router::Handler for GetFileHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (parts, body) = request.into_parts();
-
-        let bytes = hyper::body::to_bytes(body).await.unwrap().to_vec(); // TODO err
+        let (parts, _) = request.into_parts();
 
         // TODO forward
         // if we got response

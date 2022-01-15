@@ -29,8 +29,15 @@ pub struct FileVersionsHandler {
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
-fn get_path_from_uri(uri: &http::Uri) -> &str {
-    &uri.path()[7..]
+fn get_path_from_uri(uri: &http::Uri) -> Result<&str, router::RouterError> {
+    lazy_static::lazy_static! {
+        static ref URI_REGEX: regex::Regex = regex::Regex::new(r"^/(files|file-versions)/(.+)").unwrap();
+    }
+    let matches = URI_REGEX.captures(uri.path());
+    match matches {
+        Some(matches) => Ok(matches.get(2).unwrap().as_str()),
+        None => Err(router::InvalidRequest(String::from("Invalid url"))),
+    }
 }
 
 #[async_trait::async_trait]
@@ -43,9 +50,8 @@ impl router::Handler for DeleteFileHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let repo = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+        let file_path = get_path_from_uri(&request.uri())?;
+        let repo = self.file_repo.get_single_file_repo(file_path, false)?;
 
         repo.delete()?;
 
@@ -66,9 +72,8 @@ impl router::Handler for GetFileHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let repo = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+        let file_path = get_path_from_uri(&request.uri())?;
+        let repo = self.file_repo.get_single_file_repo(file_path, false)?;
 
         let filename = repo.get_filename()?;
 
@@ -109,13 +114,12 @@ impl router::Handler for MoveFileHandler {
             .try_into()
             .map_err(|e| super::map_error(&e, "Invalid destination", 400))?;
 
-        let destination = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&destination), true)?;
+        let path_from = get_path_from_uri(&request.uri())?;
+        let path_to = get_path_from_uri(&destination)?;
 
-        let repo = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+        let destination = self.file_repo.get_single_file_repo(path_to, true)?;
+
+        let repo = self.file_repo.get_single_file_repo(path_from, false)?;
 
         repo.rename(&destination)?;
 
@@ -137,15 +141,14 @@ impl router::Handler for PutFileHandler {
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let (parts, body) = request.into_parts();
+        let file_path = get_path_from_uri(&parts.uri)?;
 
         let file_content = hyper::body::to_bytes(body)
             .await
             .map(|b| b.to_vec())
             .map_err(|e| super::map_error(&e, "Invalid content", 400))?;
 
-        let repo = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&parts.uri), true)?;
+        let repo = self.file_repo.get_single_file_repo(file_path, true)?;
 
         repo.save(&file_content)?;
 
@@ -166,9 +169,8 @@ impl router::Handler for FileVersionsHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let repo = self
-            .file_repo
-            .get_single_file_repo(get_path_from_uri(&request.uri()), false)?;
+        let file_path = get_path_from_uri(&request.uri())?;
+        let repo = self.file_repo.get_single_file_repo(file_path, false)?;
 
         let log = &repo.get_log().map_err(|_| router::NotFound)?;
 

@@ -8,7 +8,7 @@ pub struct FileLog {
     pub entries: Vec<FileLogEntry>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]
 pub enum FileLogEntryType {
     Creation {
@@ -32,7 +32,7 @@ pub enum FileLogEntryType {
     },
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct FileLogEntry {
     pub(super) timestamp: chrono::DateTime<chrono::Utc>,
     pub(super) address: std::net::IpAddr,

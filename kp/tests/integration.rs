@@ -23,6 +23,9 @@ impl TestFixture {
             "jrpc": {{
                 "target": "{url}/jsonrpc"
             }},
+            "logging": {{
+                "level": "DEBUG"
+            }},
             "receiver": {{
                 "target": "{url}"
             }},
@@ -124,7 +127,27 @@ async fn it_allows_saving_files(#[with("files", 8079)] fixture: TestFixture) {
     assert_eq!(200, parts.status);
     assert_eq!("Fake content", body.as_str());
 
-    // TODO check versions
+    let request = hyper::Request::builder()
+        .uri(format!(
+            "http://127.0.0.1:{}/file-versions/testfile.txt",
+            8079
+        ))
+        .method("GET")
+        .body(hyper::Body::empty())
+        .unwrap();
+
+    let response = hyper::Client::new()
+        .request(request)
+        .await
+        .expect("Error while sending GET file request");
+
+    let (parts, body) = response.into_parts();
+    let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
+
+    assert_eq!(200, parts.status);
+    println!("{}", &body);
+    let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"Creation","version":0,"hash":"X5DLkAP39ZbbRCA79GreR1pKSQNtCJ2iUIugi4/Xpb8="}}]$"#).unwrap();
+    assert!(re.is_match(&body));
 }
 
 #[rstest::rstest]

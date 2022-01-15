@@ -2,7 +2,7 @@
 name = "kodiproxy"
 version = "0.1.0"
 authors = ["bigbro"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "kp"
@@ -23,6 +23,7 @@ form_urlencoded = "1"
 futures = "0.3"
 http = "0.2"
 hyper = "0.14"
+lazy_static = "1"
 libc = "0.2.0"
 log = "0.4"
 quick-xml = { version = "0.22", features = ["serialize"] }
