@@ -1,6 +1,6 @@
 /// Handler that takes care of GET requests
 pub struct GetFileHandler {
-    //pub file_client: std::sync::Arc<crate::file_client::FileClient>,
+    pub file_client: std::sync::Arc<crate::file_client::FileClient>,
     pub file_repo: std::sync::Arc<files::FileRepository>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
@@ -9,8 +9,9 @@ fn get_path_from_uri(uri: &http::Uri) -> &str {
     &uri.path()[7..]
 }
 
-#[async_trait::async_trait]
-impl router::Handler for GetFileHandler {
+//#[async_trait::async_trait]
+//impl router::Handler for GetFileHandler {
+impl GetFileHandler {
     fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
         &self.matcher
     }
@@ -21,15 +22,35 @@ impl router::Handler for GetFileHandler {
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let (parts, _) = request.into_parts();
 
-        // TODO forward
-        // if we got response
-        //   if successful:
-        //      check sha and update local if necessary
-        //   if 404:
-        //      delete local if necessary
-        //   reply same stuff
-        // if we did not get response
-        //   return local file
+        // fetch and compare local and distant history
+        // if == => serve local
+        // if local > distant
+        //   update distant
+        //   serve local
+        // if distant > local
+        //   update distant
+        //   serve distant
+        // if divergence
+        //   :(
+
+        /*let res = self.file_client.forward(&parts, hyper::Body::empty()).await;
+
+        // TODO nominal case
+        match res {
+            Ok(response) => {
+                // if 200 of 404
+                //  update local or distant if necessary
+                //  forward response
+                // else
+                //  do error management
+                todo!()
+            }
+            Err(_) => {
+                // do error management
+                todo!()
+            }
+        }*/
+        // TODO
 
         let repo = self
             .file_repo

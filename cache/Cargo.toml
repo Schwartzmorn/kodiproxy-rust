@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 async-trait = "0.1"
+chrono = "0.4"
 files = { path = "../files" }
 http = "0.2"
 hyper = "0.14"

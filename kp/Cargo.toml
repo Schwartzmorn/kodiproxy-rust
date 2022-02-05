@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 async-std = "1"
 async-trait = "0.1"
-clap = "2"
+clap = "3"
 dbus = "0.9"
 env_logger = "0.9"
 files = { path = "../files" }
@@ -35,7 +35,7 @@ serde_urlencoded = "0.7"
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
-mockall = "0.10"
-rstest = "0.10"
+mockall = "0.11"
+rstest = "0.12"
 url = "2"
 wiremock = "0.5"

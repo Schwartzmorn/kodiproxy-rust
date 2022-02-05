@@ -34,9 +34,9 @@ pub enum FileLogEntryType {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct FileLogEntry {
-    pub(super) timestamp: chrono::DateTime<chrono::Utc>,
-    pub(super) address: std::net::IpAddr,
-    pub(super) entry: FileLogEntryType,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub address: std::net::IpAddr,
+    pub entry: FileLogEntryType,
 }
 
 impl FileLogWriter {
@@ -157,7 +157,7 @@ impl FileLogEntry {
         Ok(())
     }
 
-    pub fn decode(line: String) -> Option<FileLogEntry> {
+    pub fn decode(line: &str) -> Option<FileLogEntry> {
         lazy_static::lazy_static! {
             static ref RE: regex::Regex = regex::Regex::new(r"^\s*(?P<timestamp>[^ ]+)\s+\[(?P<address>[^\]]+)\]\s+(?P<entry_type>.+\])").unwrap();
         }
@@ -196,10 +196,21 @@ impl FileLog {
             .filter(Result::is_ok)
             .map(Result::unwrap)
             .filter(|s| !s.is_empty())
-            .map(FileLogEntry::decode)
+            .map(|s| FileLogEntry::decode(s.as_str()))
             .filter(Option::is_some)
             .map(Option::unwrap)
             .collect::<Vec<_>>();
         Ok(FileLog { entries })
+    }
+
+    pub fn new_from_str(log_str: &str) -> FileLog {
+        FileLog {
+            entries: log_str
+                .split('\n')
+                .map(FileLogEntry::decode)
+                .filter(Option::is_some)
+                .map(Option::unwrap)
+                .collect::<Vec<_>>(),
+        }
     }
 }

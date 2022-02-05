@@ -1,16 +1,16 @@
-fn parse_args() -> clap::ArgMatches<'static> {
+fn parse_args() -> clap::ArgMatches {
     clap::App::new("KodiProxy")
         .author("Schwartzmorn")
         .about("My one stop proxy for my pi")
         .arg(
-            clap::Arg::with_name("configuration")
-                .short("c")
+            clap::Arg::new("configuration")
+                .short('c')
                 .long("configuration")
                 .value_name("FILE")
                 .help("path to the configuration file of the different modules"),
         )
         .arg(
-            clap::Arg::with_name("dump_configuration")
+            clap::Arg::new("dump_configuration")
                 .long("dump_configuration")
                 .value_name("OUT_FILE")
                 .help("dump the configuration to file and exit"),
