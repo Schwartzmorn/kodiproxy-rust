@@ -12,6 +12,7 @@ function build() {
     sudo apt-get install build-essential
     sudo apt-get install libdbus-1-dev
     sudo apt-get install libcec-dev
+    sudo apt-get install libsqlite3-dev
     cargo build --release
 }
 

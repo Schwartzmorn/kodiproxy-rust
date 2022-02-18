@@ -18,7 +18,9 @@ where
 pub fn get_file_handlers(
     configuration: &crate::configuration::FileConfiguration,
 ) -> Vec<Box<dyn router::Handler>> {
-    let file_repo = files::FileRepository::new(&configuration.root_path);
+    let file_repo = std::sync::Arc::new(std::sync::Mutex::new(
+        files::db::FilesDB::new(&configuration.root_path).unwrap(),
+    ));
     log::info!(
         "Initializing file repository in {:?}",
         &configuration.root_path

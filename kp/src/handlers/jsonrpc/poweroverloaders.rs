@@ -90,6 +90,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
 
 #[cfg(test)]
 mod test {
+    use test_log::test;
 
     #[rstest::fixture]
     fn parts() -> http::request::Parts {
@@ -102,7 +103,7 @@ mod test {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_responds_to_system_properties(parts: http::request::Parts) {
         let jrpc_handler = crate::handlers::jsonrpc::JsonrpcHandler::builder().build();
 
@@ -134,7 +135,7 @@ mod test {
     }
 
     #[rstest::rstest]
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_shuts_down_the_receiver_and_the_tv(parts: http::request::Parts) {
         let jrpc_handler = crate::handlers::jsonrpc::JsonrpcHandler::builder().build();
 

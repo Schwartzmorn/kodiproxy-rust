@@ -329,6 +329,7 @@ impl AVReceiverInterface for AVReceiver {
 #[cfg(test)]
 mod tests {
     use super::AVReceiverInterface;
+    use test_log::test;
 
     fn get_receiver(mock_server: &wiremock::MockServer) -> super::AVReceiver {
         super::AVReceiver::builder()
@@ -378,7 +379,7 @@ mod tests {
         )
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_gives_correct_status_receiver_off() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -398,7 +399,7 @@ mod tests {
         assert_eq!(false, receiver.is_powered_on().await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_gives_correct_min_volume() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -419,7 +420,7 @@ mod tests {
         assert_eq!((0, false), receiver.get_volume().await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_gives_correct_status_receiver_on() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -441,7 +442,7 @@ mod tests {
         assert_eq!((67, true), receiver.get_volume().await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_mutes_and_unmutes() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -513,7 +514,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_changes_input_when_switching_on() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -570,7 +571,7 @@ mod tests {
         assert!(receiver.set_power(true).await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_switches_off_when_the_input_is_ok() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -601,7 +602,7 @@ mod tests {
         assert!(!receiver.set_power(false).await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_does_not_switch_off_if_the_input_is_not_ok() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -632,7 +633,7 @@ mod tests {
         assert!(!receiver.set_power(false).await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_sets_volume() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -652,7 +653,7 @@ mod tests {
         assert_eq!(50, receiver.set_volume(25).await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_increments_volume() {
         let mock_server = wiremock::MockServer::start().await;
 
@@ -684,7 +685,7 @@ mod tests {
         assert_eq!(75, receiver.increment_volume(true).await);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_decrements_volume() {
         let mock_server = wiremock::MockServer::start().await;
 

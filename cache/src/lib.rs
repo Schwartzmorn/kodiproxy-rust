@@ -1,6 +1,5 @@
 mod file_client;
 mod handlers;
-pub mod logs_comparator;
 
 use std::str::FromStr;
 

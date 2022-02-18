@@ -1,5 +1,5 @@
 /// Handler that takes care of GET requests
-pub struct GetFileHandler {
+/*pub struct GetFileHandler {
     pub file_client: std::sync::Arc<crate::file_client::FileClient>,
     pub file_repo: std::sync::Arc<files::FileRepository>,
     pub matcher: Box<dyn router::matcher::Matcher>,
@@ -69,7 +69,7 @@ impl GetFileHandler {
             .body(hyper::Body::from(data))
             .unwrap())
     }
-}
+}*/
 
 #[cfg(test)]
 mod test {

@@ -83,7 +83,8 @@ pub async fn serve<F>(
 
             let router = router.clone();
             async move {
-                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |req| {
+                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |mut req| {
+                    req.extensions_mut().insert(remote_address);
                     let router = router.clone();
                     async move { router.handle(req).await }
                 }))

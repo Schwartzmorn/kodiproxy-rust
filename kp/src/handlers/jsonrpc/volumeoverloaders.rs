@@ -239,6 +239,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
     fn get_request<T: std::fmt::Display>(
         param: &str,
         value: T,
@@ -271,7 +272,7 @@ mod tests {
         crate::handlers::jsonrpc::JsonrpcHandler::builder().build()
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_sets_volume() {
         let mut mock = crate::avreceiver::MockAVReceiver::new();
         mock.expect_set_volume()
@@ -335,7 +336,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_mutes() {
         let mut mock = crate::avreceiver::MockAVReceiver::new();
         mock.expect_set_mute()
@@ -396,7 +397,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_responds_to_properties() {
         let mut mock_receiver = crate::avreceiver::MockAVReceiver::new();
         mock_receiver

@@ -245,6 +245,7 @@ impl router::Handler for JsonrpcHandler {
 mod tests {
     use crate::handlers::jsonrpc::JsonrpcOverloader;
     use router::Handler;
+    use test_log::test;
 
     struct MockOverloader {}
 
@@ -260,7 +261,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_forwards_when_no_overloader() {
         let mock_server: wiremock::MockServer = wiremock::MockServer::start().await;
 
@@ -289,7 +290,7 @@ mod tests {
         assert_eq!("a post body", body);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_returns_errors() {
         let jrpc = crate::handlers::jsonrpc::JsonrpcHandler::builder().build();
 
@@ -309,7 +310,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_forwards_to_overloader() {
         let jrpc = crate::handlers::jsonrpc::JsonrpcHandler::builder()
             .add_overloader("A.Method", Box::from(MockOverloader {}))
@@ -332,7 +333,7 @@ mod tests {
         assert_eq!(r#"{"jsonrpc":"2.0","result":null,"id":1}"#, body);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn it_forwards_jrpc() {
         let mock_server: wiremock::MockServer = wiremock::MockServer::start().await;
 
