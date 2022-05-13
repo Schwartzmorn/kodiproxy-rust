@@ -32,7 +32,10 @@ static SQL_UPSERT_FILE: &str = "insert into FILES (PATH, NAME, VERSION, TIMESTAM
 
 static SQL_DELETE_FILE: &str = "delete from FILES where PATH=? and NAME=?";
 
-static SQL_SELECT_FILE: &str = "select FILE from FILES where PATH=? and NAME=?";
+static SQL_SELECT_FILE: &str = "select VERSION, TIMESTAMP, FILE from FILES where PATH=? and NAME=?";
+
+static SQL_SELECT_FILE_NO_CONTENT: &str =
+    "select VERSION, TIMESTAMP from FILES where PATH=? and NAME=?";
 
 static SQL_FILE_EXISTS: &str = "select count(*) from FILES where PATH=? and NAME=?";
 
@@ -46,6 +49,17 @@ static SQL_SELECT_VERSION: &str = "select max(VERSION) from FILES_HISTORY where 
 static SQL_SELECT_HISTORY: &str =
     "select VERSION, TIMESTAMP, OPERATION, IP_ADDRESS, HASH, OLD_OR_NEW_PATH from FILES_HISTORY
     where PATH=? and NAME=? order by VERSION";
+
+/// Contains the current state of a resource
+#[derive(Debug)]
+pub struct FilesDbResponse {
+    /// Current version number of the resource
+    pub version: i32,
+    /// Timestamp of the last modification
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Only present in the response of [`FilesDB::get()`], contains the resource
+    pub file: Option<Vec<u8>>,
+}
 
 pub struct FilesDB {
     connection: rusqlite::Connection,
@@ -94,16 +108,35 @@ impl FilesDB {
         Ok(FilesDB { connection })
     }
 
-    pub fn get(&self, file_path: &str, file_name: &str) -> Result<Vec<u8>, router::RouterError> {
+    /// Retrieves the latest version of a resource
+    /// if get_content is false, only the version and timestamp will be retrieved
+    pub fn get(
+        &self,
+        file_path: &str,
+        file_name: &str,
+        get_content: bool,
+    ) -> Result<FilesDbResponse, router::RouterError> {
         self.connection
             .query_row(
-                SQL_SELECT_FILE,
+                if get_content {
+                    SQL_SELECT_FILE
+                } else {
+                    SQL_SELECT_FILE_NO_CONTENT
+                },
                 rusqlite::params![file_path, file_name],
-                |row| row.get(0),
+                |row| {
+                    Ok(FilesDbResponse {
+                        version: row.get(0)?,
+                        timestamp: decode_timestamp(row.get(1)?)?,
+                        file: if get_content { Some(row.get(2)?) } else { None },
+                    })
+                },
             )
             .map_err(|error| super::map_error(&error, "Could not find file", 404))
     }
 
+    /// Moves a resource
+    /// If successful, the [FilesDbResponse] will contain the state of the initial resource
     pub fn move_to(
         &mut self,
         file_path_from: &str,
@@ -111,19 +144,20 @@ impl FilesDB {
         file_path_to: &str,
         file_name_to: &str,
         address: &std::net::IpAddr,
-    ) -> Result<(), router::RouterError> {
+    ) -> Result<FilesDbResponse, router::RouterError> {
         if file_name_from == file_name_to && file_path_from == file_path_to {
             return Err(router::InvalidRequest(String::from(
                 "Origin and destination are the same",
             )));
         }
 
-        let file = self.get(file_path_from, file_name_from)?;
+        let file = self.get(file_path_from, file_name_from, true)?;
 
         self.move_inner(
             file_path_from,
             file_name_from,
-            file,
+            file.file.unwrap(),
+            file.version,
             file_path_to,
             file_name_to,
             address,
@@ -131,23 +165,26 @@ impl FilesDB {
         .map_err(|error| super::map_error(&error, "Failed to move file", 500))
     }
 
+    /// Saves the new version of a resource
+    /// This works to update or create a new resource
     pub fn save(
         &mut self,
         file_path: &str,
         file_name: &str,
         file_data: &Vec<u8>,
         address: &std::net::IpAddr,
-    ) -> Result<(), router::RouterError> {
+    ) -> Result<FilesDbResponse, router::RouterError> {
         self.save_inner(file_path, file_name, file_data, address)
             .map_err(|error| super::map_error(&error, "Failed to save file", 500))
     }
 
+    /// Deletes a resource
     pub fn delete(
         &mut self,
         file_path: &str,
         file_name: &str,
         address: &std::net::IpAddr,
-    ) -> Result<(), router::RouterError> {
+    ) -> Result<FilesDbResponse, router::RouterError> {
         self.delete_inner(file_path, file_name, address)
             .map_err(|error| super::map_error(&error, "Failed to delete file", 500))
     }
@@ -162,6 +199,7 @@ impl FilesDB {
             .ok()
     }
 
+    /// Returns the history of a resource as a [crate::log::FileLog]
     pub fn get_history(
         &self,
         file_path: &str,
@@ -183,15 +221,15 @@ impl FilesDB {
         file_path_from: &str,
         file_name_from: &str,
         file_data: Vec<u8>,
+        file_version: i32,
         file_path_to: &str,
         file_name_to: &str,
         address: &std::net::IpAddr,
-    ) -> Result<(), rusqlite::Error> {
+    ) -> Result<FilesDbResponse, rusqlite::Error> {
         let hash = digest(&file_data);
-        let timestamp = chrono::Utc::now().to_rfc3339();
-        let new_version_from = self
-            .get_version(file_path_from, file_name_from)
-            .map_or(0, |v| v + 1);
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = chrono::Utc::now().to_rfc3339();
+        let new_version_from = file_version + 1;
         let new_version_to = self
             .get_version(file_path_to, file_name_to)
             .map_or(0, |v| v + 1);
@@ -217,7 +255,7 @@ impl FilesDB {
                 file_path_from,
                 file_name_from,
                 new_version_from,
-                timestamp,
+                timestamp_str,
                 "MOVE_TO",
                 &address,
                 &rusqlite::types::Null,
@@ -233,7 +271,7 @@ impl FilesDB {
                 file_path_to,
                 file_name_to,
                 new_version_to,
-                timestamp,
+                timestamp_str,
                 "MOVE_FROM",
                 &address,
                 &hash,
@@ -255,13 +293,18 @@ impl FilesDB {
                 file_path_to,
                 file_name_to,
                 new_version_to,
-                timestamp,
+                timestamp_str,
                 &hash,
                 &file_data
             ],
         )?;
 
-        transaction.commit()
+        transaction.commit()?;
+        Ok(FilesDbResponse {
+            version: new_version_from,
+            timestamp,
+            file: None,
+        })
     }
 
     fn delete_inner(
@@ -269,16 +312,17 @@ impl FilesDB {
         file_path: &str,
         file_name: &str,
         address: &std::net::IpAddr,
-    ) -> Result<(), rusqlite::Error> {
-        let timestamp = chrono::Utc::now().to_rfc3339();
-        let new_version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
+    ) -> Result<FilesDbResponse, rusqlite::Error> {
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = timestamp.to_rfc3339();
+        let version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
         let address = address.to_string();
 
         log::info!(
             "Starting deletion transaction for file {}/{} with version {}",
             file_path,
             file_name,
-            new_version
+            version
         );
 
         let transaction = self.connection.transaction()?;
@@ -294,8 +338,8 @@ impl FilesDB {
                 rusqlite::params![
                     file_path,
                     file_name,
-                    new_version,
-                    timestamp,
+                    version,
+                    timestamp_str,
                     "DELETION",
                     &address,
                     &rusqlite::types::Null,
@@ -307,7 +351,12 @@ impl FilesDB {
             log::debug!("No row deleted");
         }
 
-        transaction.commit()
+        transaction.commit()?;
+        Ok(FilesDbResponse {
+            version,
+            timestamp,
+            file: None,
+        })
     }
 
     fn save_inner(
@@ -316,10 +365,11 @@ impl FilesDB {
         file_name: &str,
         file_data: &Vec<u8>,
         address: &std::net::IpAddr,
-    ) -> Result<(), rusqlite::Error> {
+    ) -> Result<FilesDbResponse, rusqlite::Error> {
         let hash = digest(file_data);
-        let timestamp = chrono::Utc::now().to_rfc3339();
-        let new_version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = timestamp.to_rfc3339();
+        let version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
         let address = address.to_string();
 
         log::info!(
@@ -327,7 +377,7 @@ impl FilesDB {
             file_path,
             file_name,
             &hash,
-            new_version
+            version
         );
 
         let transaction = self.connection.transaction()?;
@@ -345,8 +395,8 @@ impl FilesDB {
             rusqlite::params![
                 file_path,
                 file_name,
-                new_version,
-                timestamp,
+                version,
+                timestamp_str,
                 if exists { "UPDATE" } else { "CREATION" },
                 &address,
                 &hash,
@@ -361,14 +411,19 @@ impl FilesDB {
             rusqlite::params![
                 file_path,
                 file_name,
-                new_version,
-                timestamp,
+                version,
+                timestamp_str,
                 &hash,
                 file_data
             ],
         )?;
 
-        transaction.commit()
+        transaction.commit()?;
+        Ok(FilesDbResponse {
+            version,
+            timestamp,
+            file: None,
+        })
     }
 
     fn get_history_inner(
@@ -431,6 +486,12 @@ impl FilesDB {
     }
 }
 
+fn decode_timestamp(timestamp: String) -> Result<chrono::DateTime<chrono::Utc>, rusqlite::Error> {
+    chrono::DateTime::parse_from_rfc3339(timestamp.as_ref())
+        .map(|ts| ts.with_timezone(&chrono::Utc))
+        .map_err(|_| rusqlite::Error::InvalidColumnName(String::from("Failed to decode timestamp")))
+}
+
 fn map_sqlite_result<T, E>(result: Result<T, E>, message: &str) -> Result<T, router::RouterError>
 where
     E: std::fmt::Debug,
@@ -472,9 +533,10 @@ mod test {
 
         // We reopen the the same database and check we indeed have our file inside
         let db = FilesDB::new(std::path::PathBuf::from(TEST_PATH).join("opening")).unwrap();
-        let retrieved_data = db.get(file_path, file_name).unwrap();
+        let retrieved_data = db.get(file_path, file_name, true).unwrap();
 
-        assert_eq!(retrieved_data, file_data);
+        assert_eq!(0, retrieved_data.version);
+        assert_eq!(file_data, retrieved_data.file.unwrap());
     }
 
     #[test]
@@ -489,16 +551,18 @@ mod test {
         db.save(file_path, file_name, &file_data_1, &first_address)
             .unwrap();
 
-        let saved_data = db.get(file_path, file_name).unwrap();
+        let saved_data = db.get(file_path, file_name, true).unwrap();
 
-        assert_eq!(file_data_1, saved_data);
+        assert_eq!(0, saved_data.version);
+        assert_eq!(file_data_1, saved_data.file.unwrap());
 
         db.save(file_path, file_name, &file_data_2, &first_address)
             .unwrap();
 
-        let saved_data = db.get(file_path, file_name).unwrap();
+        let saved_data = db.get(file_path, file_name, true).unwrap();
 
-        assert_eq!(file_data_2, saved_data);
+        assert_eq!(1, saved_data.version);
+        assert_eq!(file_data_2, saved_data.file.unwrap());
     }
 
     #[test]
@@ -514,7 +578,7 @@ mod test {
 
         db.delete(file_path, file_name, &address).unwrap();
 
-        let error = db.get(file_path, file_name).unwrap_err();
+        let error = db.get(file_path, file_name, true).unwrap_err();
 
         assert!(matches!(error, router::RouterError::HandlerError(404, _)));
     }
@@ -534,13 +598,13 @@ mod test {
         db.move_to(file_path, file_name, file_path_to, file_name_to, &address)
             .unwrap();
 
-        let error = db.get(file_path, file_name).unwrap_err();
+        let error = db.get(file_path, file_name, true).unwrap_err();
 
         assert!(matches!(error, router::RouterError::HandlerError(404, _)));
 
-        let saved_data = db.get(file_path_to, file_name_to).unwrap();
+        let saved_data = db.get(file_path_to, file_name_to, true).unwrap();
 
-        assert_eq!(saved_data, file_data);
+        assert_eq!(file_data, saved_data.file.unwrap());
     }
 
     #[test]

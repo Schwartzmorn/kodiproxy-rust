@@ -54,6 +54,13 @@ fn get_path_and_name_from_uri(uri: &http::Uri) -> Result<(String, String), route
     Ok((file_path.into(), file_name.into()))
 }
 
+fn get_response_builder(data: &files::db::FilesDbResponse, status: u16) -> http::response::Builder {
+    hyper::Response::builder()
+        .status(status)
+        .header("last-modified", data.timestamp.to_rfc2822())
+        .header("etag", format!("\"{}\"", data.version))
+}
+
 #[async_trait::async_trait]
 impl router::Handler for DeleteFileHandler {
     fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
@@ -68,18 +75,17 @@ impl router::Handler for DeleteFileHandler {
 
         let mut repo = self.file_repo.lock().unwrap();
 
-        repo.delete(
+        let data = repo.delete(
             file_path.as_ref(),
             file_name.as_ref(),
             &request
                 .extensions()
                 .get::<std::net::SocketAddr>()
-                .unwrap_or(&SOCK_ADDRESS)
+                .unwrap_or(&DEFAULT_SOCK_ADDRESS)
                 .ip(),
         )?;
 
-        Ok(hyper::Response::builder()
-            .status(204)
+        Ok(get_response_builder(&data, 204)
             .body(hyper::Body::empty())
             .unwrap())
     }
@@ -97,19 +103,27 @@ impl router::Handler for GetFileHandler {
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
         let (file_path, file_name) = get_path_and_name_from_uri(&request.uri())?;
 
+        let is_get = request.method() == http::Method::GET;
+
         let repo = self.file_repo.lock().unwrap();
 
-        let data = repo.get(file_path.as_ref(), file_name.as_ref())?;
+        let data = repo.get(file_path.as_ref(), file_name.as_ref(), is_get)?;
 
-        log::info!("Sent file with size {}", &data.len());
+        log::info!(
+            "Sending file with size {}",
+            &data.file.as_ref().unwrap().len()
+        );
 
-        Ok(hyper::Response::builder()
-            .status(200)
+        Ok(get_response_builder(&data, 200)
             .header(
                 "content-disposition",
                 format!("attachment; filename=\"{}\"", file_name),
             )
-            .body(hyper::Body::from(data))
+            .body(if is_get {
+                hyper::Body::from(data.file.unwrap())
+            } else {
+                hyper::Body::empty()
+            })
             .unwrap())
     }
 }
@@ -141,7 +155,7 @@ impl router::Handler for MoveFileHandler {
 
         let mut repo = self.file_repo.lock().unwrap();
 
-        repo.move_to(
+        let data = repo.move_to(
             file_path_from.as_ref(),
             file_name_from.as_ref(),
             file_path_to.as_ref(),
@@ -149,12 +163,11 @@ impl router::Handler for MoveFileHandler {
             &request
                 .extensions()
                 .get::<std::net::SocketAddr>()
-                .unwrap_or(&SOCK_ADDRESS)
+                .unwrap_or(&DEFAULT_SOCK_ADDRESS)
                 .ip(),
         )?;
 
-        Ok(hyper::Response::builder()
-            .status(200)
+        Ok(get_response_builder(&data, 204)
             .body(hyper::Body::empty())
             .unwrap())
     }
@@ -185,15 +198,14 @@ impl router::Handler for PutFileHandler {
 
         let mut repo = self.file_repo.lock().unwrap();
 
-        repo.save(
+        let data = repo.save(
             file_path.as_ref(),
             file_name.as_ref(),
             &file_content,
             &remote_address,
         )?;
 
-        Ok(hyper::Response::builder()
-            .status(201)
+        Ok(get_response_builder(&data, 201)
             .body(hyper::Body::empty())
             .unwrap())
     }
@@ -223,7 +235,10 @@ impl router::Handler for FileVersionsHandler {
     }
 }
 
-lazy_static::lazy_static!(static ref SOCK_ADDRESS: std::net::SocketAddr = std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 0););
+lazy_static::lazy_static!(
+    static ref DEFAULT_SOCK_ADDRESS: std::net::SocketAddr
+        = std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 0);
+);
 
 #[cfg(test)]
 mod tests {
@@ -284,11 +299,39 @@ mod tests {
                 .to_str()
                 .unwrap()
         );
+        assert_eq!(
+            "\"0\"",
+            parts.headers.get("ETag").unwrap().to_str().unwrap()
+        );
+        assert!(parts.headers.contains_key("Last-Modified"));
 
         let content =
             String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
 
         assert_eq!("content of current file", content);
+
+        let req = hyper::Request::builder()
+            .uri("/files/keepass/pdb.kdbx")
+            .method("HEAD")
+            .body(hyper::Body::empty())
+            .unwrap();
+
+        let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
+        assert_eq!(200, parts.status);
+        assert_eq!(
+            "attachment; filename=\"pdb.kdbx\"",
+            parts
+                .headers
+                .get("Content-Disposition")
+                .unwrap()
+                .to_str()
+                .unwrap()
+        );
+        assert_eq!(
+            "\"0\"",
+            parts.headers.get("ETag").unwrap().to_str().unwrap()
+        );
+        assert!(parts.headers.contains_key("Last-Modified"));
     }
 
     #[test(tokio::test)]
@@ -320,11 +363,15 @@ mod tests {
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
 
         assert_eq!(204, parts.status);
+        assert_eq!(
+            "\"1\"",
+            parts.headers.get("ETag").unwrap().to_str().unwrap()
+        );
 
         {
             let repo = file_repo.lock().unwrap();
 
-            let result = repo.get("keepass", "pdb.kdbx").unwrap_err();
+            let result = repo.get("keepass", "pdb.kdbx", true).unwrap_err();
 
             println!("{:?}", result);
 
@@ -361,7 +408,7 @@ mod tests {
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
 
-        assert_eq!(200, parts.status);
+        assert_eq!(204, parts.status);
 
         // TODO check from and to ?
 

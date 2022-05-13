@@ -32,7 +32,7 @@ impl ICECCallbacks {
     extern "C" fn default_log_message(_cbparam: *mut libc::c_void, message: *const CECLogMessage) {
         if log::log_enabled!(log::Level::Debug) {
             unsafe {
-                if let Some(msg) = message.as_ref().map(|m| m.message.as_ref()).flatten() {
+                if let Some(msg) = message.as_ref().and_then(|m| m.message.as_ref()) {
                     let level = match message.as_ref().unwrap().level {
                         CECLogLevel::ERROR => log::Level::Warn,
                         CECLogLevel::WARNING => log::Level::Info,

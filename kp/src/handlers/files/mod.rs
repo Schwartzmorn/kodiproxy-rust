@@ -34,6 +34,10 @@ pub fn get_file_handlers(
             file_repo: file_repo.clone(),
             matcher: get_matcher(&hyper::Method::GET),
         }),
+        Box::from(handlers::GetFileHandler {
+            file_repo: file_repo.clone(),
+            matcher: get_matcher(&hyper::Method::HEAD),
+        }),
         Box::from(handlers::MoveFileHandler {
             file_repo: file_repo.clone(),
             matcher: get_matcher("MOVE"),
