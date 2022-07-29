@@ -19,7 +19,7 @@ fn register_handlers_kp(
             avreceiver.clone(),
             cec_interface.clone(),
         ))
-        .add_handlers(handlers::files::get_file_handlers(&configuration.file))
+        .add_handlers(files::get_file_handlers(&configuration.file.root_path))
         .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()));
 }
 

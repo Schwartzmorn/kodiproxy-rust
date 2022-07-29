@@ -34,17 +34,18 @@ static SQL_DELETE_FILE: &str = "delete from FILES where PATH=? and NAME=?";
 
 static SQL_SELECT_FILE: &str = "select VERSION, TIMESTAMP, FILE from FILES where PATH=? and NAME=?";
 
+static SQL_SELECT_VERSION: &str = "select VERSION from FILES where PATH=? and NAME=?";
+
 static SQL_SELECT_FILE_NO_CONTENT: &str =
     "select VERSION, TIMESTAMP from FILES where PATH=? and NAME=?";
-
-static SQL_FILE_EXISTS: &str = "select count(*) from FILES where PATH=? and NAME=?";
 
 // FILES_HISTORY statements
 static SQL_INSERT_HISTORY_LINE: &str = "insert into FILES_HISTORY
     (PATH, NAME, VERSION, TIMESTAMP, OPERATION, IP_ADDRESS, HASH, OLD_OR_NEW_PATH, FILE)
     values (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-static SQL_SELECT_VERSION: &str = "select max(VERSION) from FILES_HISTORY where PATH=? and NAME=?";
+static SQL_SELECT_HISTORY_VERSION: &str =
+    "select max(VERSION) from FILES_HISTORY where PATH=? and NAME=?";
 
 static SQL_SELECT_HISTORY: &str =
     "select VERSION, TIMESTAMP, OPERATION, IP_ADDRESS, HASH, OLD_OR_NEW_PATH from FILES_HISTORY
@@ -141,6 +142,7 @@ impl FilesDB {
         &mut self,
         file_path_from: &str,
         file_name_from: &str,
+        file_version_from: i32,
         file_path_to: &str,
         file_name_to: &str,
         address: &std::net::IpAddr,
@@ -151,18 +153,119 @@ impl FilesDB {
             )));
         }
 
-        let file = self.get(file_path_from, file_name_from, true)?;
+        let db_version_from = self
+            .get_current_version(file_path_from, file_name_from)
+            .ok_or(router::HandlerError(404, String::from("File not found")))?;
+        if db_version_from != file_version_from {
+            return Err(router::HandlerError(412, String::from("Version mismatch")));
+        }
 
-        self.move_inner(
+        let db_version_to = self.get_current_version(file_path_to, file_name_to);
+        if let Some(_) = db_version_to {
+            return Err(router::HandlerError(
+                412,
+                String::from("Destination already exists"),
+            ));
+        }
+
+        let file_data = self
+            .get(file_path_from, file_name_from, true)?
+            .file
+            .ok_or(router::HandlerError(404, String::from("File not found")))?;
+
+        let hash = digest(&file_data);
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = chrono::Utc::now().to_rfc3339();
+        let new_version_from = db_version_from + 1;
+        let new_version_to = self
+            .get_history_version(file_path_to, file_name_to)
+            .map_or(0, |v| v + 1);
+        let address = address.to_string();
+
+        let path_from = std::path::PathBuf::from(file_path_from).join(file_name_from);
+        let path_to = std::path::PathBuf::from(file_path_to).join(file_name_to);
+
+        log::info!(
+            "Starting move transaction from file {}/{} to {}/{}",
             file_path_from,
             file_name_from,
-            file.file.unwrap(),
-            file.version,
             file_path_to,
             file_name_to,
-            address,
-        )
-        .map_err(|error| super::map_error(&error, "Failed to move file", 500))
+        );
+
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        log::debug!("Inserting MOVE_TO history line");
+        transaction
+            .execute(
+                SQL_INSERT_HISTORY_LINE,
+                rusqlite::params![
+                    file_path_from,
+                    file_name_from,
+                    new_version_from,
+                    timestamp_str,
+                    "MOVE_TO",
+                    &address,
+                    &rusqlite::types::Null,
+                    path_to.to_string_lossy(),
+                    &rusqlite::types::Null
+                ],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        log::debug!("Inserting MOVE_FROM history line");
+        transaction
+            .execute(
+                SQL_INSERT_HISTORY_LINE,
+                rusqlite::params![
+                    file_path_to,
+                    file_name_to,
+                    new_version_to,
+                    timestamp_str,
+                    "MOVE_FROM",
+                    &address,
+                    &hash,
+                    path_from.to_string_lossy(),
+                    file_data
+                ],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        log::debug!("Deleting file from old path");
+        transaction
+            .execute(
+                SQL_DELETE_FILE,
+                rusqlite::params![file_path_from, file_name_from,],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        log::debug!("Creating file in new old path");
+        transaction
+            .execute(
+                SQL_UPSERT_FILE,
+                rusqlite::params![
+                    file_path_to,
+                    file_name_to,
+                    new_version_to,
+                    timestamp_str,
+                    &hash,
+                    &file_data
+                ],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        transaction
+            .commit()
+            .map_err(|error| super::map_error(&error, "Failed to move file", 500))?;
+
+        Ok(FilesDbResponse {
+            version: new_version_to,
+            timestamp,
+            file: None,
+        })
     }
 
     /// Saves the new version of a resource
@@ -172,10 +275,94 @@ impl FilesDB {
         file_path: &str,
         file_name: &str,
         file_data: &Vec<u8>,
+        file_version: Option<i32>,
         address: &std::net::IpAddr,
     ) -> Result<FilesDbResponse, router::RouterError> {
-        self.save_inner(file_path, file_name, file_data, address)
-            .map_err(|error| super::map_error(&error, "Failed to save file", 500))
+        let hash = digest(file_data);
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = timestamp.to_rfc3339();
+        let address = address.to_string();
+
+        log::info!(
+            "Starting creation transaction for file {}/{} with hash {} and version {:?}",
+            file_path,
+            file_name,
+            &hash,
+            file_version
+        );
+
+        let db_version = self.get_current_version(file_path, file_name);
+
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|error| super::map_error(&error, "Failed to save file", 500))?;
+
+        log::debug!("File version: {:?}", db_version);
+
+        if file_version != db_version {
+            return Err(router::RouterError::HandlerError(
+                412,
+                String::from("Version mismatch"),
+            ));
+        }
+
+        let new_version = db_version.map(|v| v + 1).unwrap_or(
+            transaction
+                .query_row(
+                    SQL_SELECT_HISTORY_VERSION,
+                    rusqlite::params![file_path, file_name],
+                    |row| row.get(0),
+                )
+                .ok()
+                .map_or(0, |v: i32| v + 1),
+        );
+
+        log::debug!("Inserting history line");
+        transaction
+            .execute(
+                SQL_INSERT_HISTORY_LINE,
+                rusqlite::params![
+                    file_path,
+                    file_name,
+                    new_version,
+                    timestamp_str,
+                    if db_version.is_some() {
+                        "UPDATE"
+                    } else {
+                        "CREATION"
+                    },
+                    &address,
+                    &hash,
+                    &rusqlite::types::Null,
+                    file_data
+                ],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to save file", 500))?;
+
+        log::debug!("Updating file");
+        transaction
+            .execute(
+                SQL_UPSERT_FILE,
+                rusqlite::params![
+                    file_path,
+                    file_name,
+                    new_version,
+                    timestamp_str,
+                    &hash,
+                    file_data
+                ],
+            )
+            .map_err(|error| super::map_error(&error, "Failed to save file", 500))?;
+
+        transaction
+            .commit()
+            .map_err(|error| super::map_error(&error, "Failed to save file", 500))?;
+        Ok(FilesDbResponse {
+            version: new_version,
+            timestamp,
+            file: None,
+        })
     }
 
     /// Deletes a resource
@@ -183,20 +370,74 @@ impl FilesDB {
         &mut self,
         file_path: &str,
         file_name: &str,
+        file_version: i32,
         address: &std::net::IpAddr,
     ) -> Result<FilesDbResponse, router::RouterError> {
-        self.delete_inner(file_path, file_name, address)
-            .map_err(|error| super::map_error(&error, "Failed to delete file", 500))
-    }
+        let timestamp = chrono::Utc::now();
+        let timestamp_str = timestamp.to_rfc3339();
+        let address = address.to_string();
 
-    pub fn get_version(&self, file_path: &str, file_name: &str) -> Option<i32> {
-        self.connection
-            .query_row(
-                SQL_SELECT_VERSION,
-                rusqlite::params![file_path, file_name],
-                |row| row.get(0),
-            )
-            .ok()
+        log::info!(
+            "Starting deletion transaction for file {}/{} with version {}",
+            file_path,
+            file_name,
+            file_version
+        );
+
+        let db_version = self
+            .get_current_version(file_path, file_name)
+            .ok_or(router::HandlerError(404, String::from("File not found")))?;
+
+        let transaction = self
+            .connection
+            .transaction()
+            .map_err(|error| super::map_error(&error, "Failed to delete", 500))?;
+
+        if file_version != db_version {
+            return Err(router::RouterError::HandlerError(
+                412,
+                String::from("Version mismatch"),
+            ));
+        }
+
+        let new_version = db_version + 1;
+
+        log::debug!("Deleting file");
+        let rows_updated = transaction
+            .execute(SQL_DELETE_FILE, rusqlite::params![file_path, file_name,])
+            .map_err(|error| super::map_error(&error, "Failed to delete file", 500))?;
+
+        if rows_updated != 0 {
+            log::debug!("Inserting history line");
+            transaction
+                .execute(
+                    SQL_INSERT_HISTORY_LINE,
+                    rusqlite::params![
+                        file_path,
+                        file_name,
+                        new_version,
+                        timestamp_str,
+                        "DELETION",
+                        &address,
+                        &rusqlite::types::Null,
+                        &rusqlite::types::Null,
+                        &rusqlite::types::Null
+                    ],
+                )
+                .map_err(|error| super::map_error(&error, "Failed to delete file", 500))?;
+        } else {
+            log::debug!("No row deleted");
+        }
+
+        transaction
+            .commit()
+            .map_err(|error| super::map_error(&error, "Failed to delete file", 500))?;
+
+        Ok(FilesDbResponse {
+            version: new_version,
+            timestamp,
+            file: None,
+        })
     }
 
     /// Returns the history of a resource as a [crate::log::FileLog]
@@ -216,214 +457,24 @@ impl FilesDB {
         history
     }
 
-    fn move_inner(
-        &mut self,
-        file_path_from: &str,
-        file_name_from: &str,
-        file_data: Vec<u8>,
-        file_version: i32,
-        file_path_to: &str,
-        file_name_to: &str,
-        address: &std::net::IpAddr,
-    ) -> Result<FilesDbResponse, rusqlite::Error> {
-        let hash = digest(&file_data);
-        let timestamp = chrono::Utc::now();
-        let timestamp_str = chrono::Utc::now().to_rfc3339();
-        let new_version_from = file_version + 1;
-        let new_version_to = self
-            .get_version(file_path_to, file_name_to)
-            .map_or(0, |v| v + 1);
-        let address = address.to_string();
-
-        let path_from = std::path::PathBuf::from(file_path_from).join(file_name_from);
-        let path_to = std::path::PathBuf::from(file_path_to).join(file_name_to);
-
-        log::info!(
-            "Starting move transaction from file {}/{} to {}/{}",
-            file_path_from,
-            file_name_from,
-            file_path_to,
-            file_name_to,
-        );
-
-        let transaction = self.connection.transaction()?;
-
-        log::debug!("Inserting MOVE_TO history line");
-        transaction.execute(
-            SQL_INSERT_HISTORY_LINE,
-            rusqlite::params![
-                file_path_from,
-                file_name_from,
-                new_version_from,
-                timestamp_str,
-                "MOVE_TO",
-                &address,
-                &rusqlite::types::Null,
-                path_to.to_string_lossy(),
-                &rusqlite::types::Null
-            ],
-        )?;
-
-        log::debug!("Inserting MOVE_FROM history line");
-        transaction.execute(
-            SQL_INSERT_HISTORY_LINE,
-            rusqlite::params![
-                file_path_to,
-                file_name_to,
-                new_version_to,
-                timestamp_str,
-                "MOVE_FROM",
-                &address,
-                &hash,
-                path_from.to_string_lossy(),
-                file_data
-            ],
-        )?;
-
-        log::debug!("Deleting file from old path");
-        transaction.execute(
-            SQL_DELETE_FILE,
-            rusqlite::params![file_path_from, file_name_from,],
-        )?;
-
-        log::debug!("Creating file in new old path");
-        transaction.execute(
-            SQL_UPSERT_FILE,
-            rusqlite::params![
-                file_path_to,
-                file_name_to,
-                new_version_to,
-                timestamp_str,
-                &hash,
-                &file_data
-            ],
-        )?;
-
-        transaction.commit()?;
-        Ok(FilesDbResponse {
-            version: new_version_from,
-            timestamp,
-            file: None,
-        })
+    fn get_current_version(&self, file_path: &str, file_name: &str) -> Option<i32> {
+        self.connection
+            .query_row(
+                SQL_SELECT_VERSION,
+                rusqlite::params![file_path, file_name],
+                |row| row.get(0),
+            )
+            .ok()
     }
 
-    fn delete_inner(
-        &mut self,
-        file_path: &str,
-        file_name: &str,
-        address: &std::net::IpAddr,
-    ) -> Result<FilesDbResponse, rusqlite::Error> {
-        let timestamp = chrono::Utc::now();
-        let timestamp_str = timestamp.to_rfc3339();
-        let version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
-        let address = address.to_string();
-
-        log::info!(
-            "Starting deletion transaction for file {}/{} with version {}",
-            file_path,
-            file_name,
-            version
-        );
-
-        let transaction = self.connection.transaction()?;
-
-        log::debug!("Deleting file");
-        let rows_updated =
-            transaction.execute(SQL_DELETE_FILE, rusqlite::params![file_path, file_name,])?;
-
-        if rows_updated != 0 {
-            log::debug!("Inserting history line");
-            transaction.execute(
-                SQL_INSERT_HISTORY_LINE,
-                rusqlite::params![
-                    file_path,
-                    file_name,
-                    version,
-                    timestamp_str,
-                    "DELETION",
-                    &address,
-                    &rusqlite::types::Null,
-                    &rusqlite::types::Null,
-                    &rusqlite::types::Null
-                ],
-            )?;
-        } else {
-            log::debug!("No row deleted");
-        }
-
-        transaction.commit()?;
-        Ok(FilesDbResponse {
-            version,
-            timestamp,
-            file: None,
-        })
-    }
-
-    fn save_inner(
-        &mut self,
-        file_path: &str,
-        file_name: &str,
-        file_data: &Vec<u8>,
-        address: &std::net::IpAddr,
-    ) -> Result<FilesDbResponse, rusqlite::Error> {
-        let hash = digest(file_data);
-        let timestamp = chrono::Utc::now();
-        let timestamp_str = timestamp.to_rfc3339();
-        let version = self.get_version(file_path, file_name).map_or(0, |v| v + 1);
-        let address = address.to_string();
-
-        log::info!(
-            "Starting creation transaction for file {}/{} with hash {} and version {}",
-            file_path,
-            file_name,
-            &hash,
-            version
-        );
-
-        let transaction = self.connection.transaction()?;
-
-        let exists: bool = transaction.query_row(
-            SQL_FILE_EXISTS,
-            rusqlite::params![file_path, file_name],
-            |row| row.get(0),
-        )?;
-
-        log::debug!("File exists: {}", exists);
-        log::debug!("Inserting history line");
-        transaction.execute(
-            SQL_INSERT_HISTORY_LINE,
-            rusqlite::params![
-                file_path,
-                file_name,
-                version,
-                timestamp_str,
-                if exists { "UPDATE" } else { "CREATION" },
-                &address,
-                &hash,
-                &rusqlite::types::Null,
-                file_data
-            ],
-        )?;
-
-        log::debug!("Updating file");
-        transaction.execute(
-            SQL_UPSERT_FILE,
-            rusqlite::params![
-                file_path,
-                file_name,
-                version,
-                timestamp_str,
-                &hash,
-                file_data
-            ],
-        )?;
-
-        transaction.commit()?;
-        Ok(FilesDbResponse {
-            version,
-            timestamp,
-            file: None,
-        })
+    fn get_history_version(&self, file_path: &str, file_name: &str) -> Option<i32> {
+        self.connection
+            .query_row(
+                SQL_SELECT_HISTORY_VERSION,
+                rusqlite::params![file_path, file_name],
+                |row| row.get(0),
+            )
+            .ok()
     }
 
     fn get_history_inner(
@@ -507,7 +558,7 @@ fn digest(data: &Vec<u8>) -> String {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use test_log::test;
     static TEST_PATH: &str = "target/test/files/db";
@@ -529,7 +580,8 @@ mod test {
         let file_name = "test_filename";
         let file_data = std::vec::Vec::from("SOME_DATA".as_bytes());
 
-        db.save(file_path, file_name, &file_data, &address).unwrap();
+        db.save(file_path, file_name, &file_data, None, &address)
+            .unwrap();
 
         // We reopen the the same database and check we indeed have our file inside
         let db = FilesDB::new(std::path::PathBuf::from(TEST_PATH).join("opening")).unwrap();
@@ -548,7 +600,7 @@ mod test {
         let file_data_1 = std::vec::Vec::from("SOME_DATA_1".as_bytes());
         let file_data_2 = std::vec::Vec::from("SOME_DATA_2".as_bytes());
 
-        db.save(file_path, file_name, &file_data_1, &first_address)
+        db.save(file_path, file_name, &file_data_1, None, &first_address)
             .unwrap();
 
         let saved_data = db.get(file_path, file_name, true).unwrap();
@@ -556,7 +608,7 @@ mod test {
         assert_eq!(0, saved_data.version);
         assert_eq!(file_data_1, saved_data.file.unwrap());
 
-        db.save(file_path, file_name, &file_data_2, &first_address)
+        db.save(file_path, file_name, &file_data_2, Some(0), &first_address)
             .unwrap();
 
         let saved_data = db.get(file_path, file_name, true).unwrap();
@@ -573,10 +625,10 @@ mod test {
         let file_name = "test_filename";
         let file_data_1 = std::vec::Vec::from("SOME_DATA".as_bytes());
 
-        db.save(file_path, file_name, &file_data_1, &address)
+        db.save(file_path, file_name, &file_data_1, None, &address)
             .unwrap();
 
-        db.delete(file_path, file_name, &address).unwrap();
+        db.delete(file_path, file_name, 0, &address).unwrap();
 
         let error = db.get(file_path, file_name, true).unwrap_err();
 
@@ -593,10 +645,18 @@ mod test {
         let file_name_to = "test_filename_to";
         let file_data = std::vec::Vec::from("SOME_DATA".as_bytes());
 
-        db.save(file_path, file_name, &file_data, &address).unwrap();
-
-        db.move_to(file_path, file_name, file_path_to, file_name_to, &address)
+        db.save(file_path, file_name, &file_data, None, &address)
             .unwrap();
+
+        db.move_to(
+            file_path,
+            file_name,
+            0,
+            file_path_to,
+            file_name_to,
+            &address,
+        )
+        .unwrap();
 
         let error = db.get(file_path, file_name, true).unwrap_err();
 
@@ -620,19 +680,26 @@ mod test {
         let file_data_3 = std::vec::Vec::from("SOME_DATA_3".as_bytes());
         let file_data_4 = std::vec::Vec::from("SOME_DATA_4".as_bytes());
 
-        db.save(file_path, file_name, &file_data_1, &address)
+        db.save(file_path, file_name, &file_data_1, None, &address)
             .unwrap();
-        db.save(file_path, file_name, &file_data_2, &address)
+        db.save(file_path, file_name, &file_data_2, Some(0), &address)
             .unwrap();
-        db.delete(file_path, file_name, &address).unwrap();
-        db.delete(file_path, file_name, &address).unwrap(); // we delete twice to check the second time does not add anything in history
-        db.save(file_path, file_name, &file_data_3, &address)
+        db.delete(file_path, file_name, 1, &address).unwrap();
+        db.delete(file_path, file_name, 1, &address).unwrap_err(); // we delete twice to check the second time does not add anything in history
+        db.save(file_path, file_name, &file_data_3, None, &address)
             .unwrap();
-        db.move_to(file_path, file_name, file_path_to, file_name_to, &address)
+        db.move_to(
+            file_path,
+            file_name,
+            3,
+            file_path_to,
+            file_name_to,
+            &address,
+        )
+        .unwrap();
+        db.save(file_path, file_name, &file_data_4, None, &address)
             .unwrap();
-        db.save(file_path, file_name, &file_data_4, &address)
-            .unwrap();
-        db.save(file_path_to, file_name_to, &file_data_4, &address)
+        db.save(file_path_to, file_name_to, &file_data_4, Some(0), &address)
             .unwrap();
 
         let history_from = db.get_history(file_path, file_name).unwrap();
@@ -685,5 +752,88 @@ mod test {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn it_prevents_deleting_when_version_is_wrong() {
+        let mut db = get_repo("version_delete");
+        let address = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+        let file_path = "test/path";
+        let file_name = "test_filename";
+        let file_data_1 = std::vec::Vec::from("SOME_DATA_1".as_bytes());
+        let file_data_2 = std::vec::Vec::from("SOME_DATA_2".as_bytes());
+
+        db.save(file_path, file_name, &file_data_1, None, &address)
+            .unwrap();
+        db.save(file_path, file_name, &file_data_2, Some(0), &address)
+            .unwrap();
+        let error = db.delete(file_path, file_name, 0, &address).unwrap_err();
+
+        assert!(matches!(error, router::RouterError::HandlerError(412, _)));
+    }
+
+    #[test]
+    fn it_prevents_saving_when_version_is_wrong() {
+        let mut db = get_repo("version_save");
+        let address = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+        let file_path = "test/path";
+        let file_name = "test_filename";
+        let file_data_1 = std::vec::Vec::from("SOME_DATA_1".as_bytes());
+        let file_data_2 = std::vec::Vec::from("SOME_DATA_2".as_bytes());
+
+        db.save(file_path, file_name, &file_data_1, None, &address)
+            .unwrap();
+        let error = db
+            .save(file_path, file_name, &file_data_2, None, &address)
+            .unwrap_err();
+
+        assert!(matches!(error, router::RouterError::HandlerError(412, _)));
+
+        db.save(file_path, file_name, &file_data_1, Some(0), &address)
+            .unwrap();
+        let error = db
+            .save(file_path, file_name, &file_data_1, None, &address)
+            .unwrap_err();
+
+        assert!(matches!(error, router::RouterError::HandlerError(412, _)));
+    }
+
+    #[test]
+    fn it_prevents_moving_when_version_is_wrong() {
+        let mut db = get_repo("move_wrong_version");
+        let address = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+        let file_path = "test/path";
+        let file_name = "test_filename";
+        let file_data = std::vec::Vec::from("SOME_DATA".as_bytes());
+
+        db.save(file_path, file_name, &file_data, None, &address)
+            .unwrap();
+
+        let error = db
+            .move_to(file_path, file_name, 1, file_path, "test_to", &address)
+            .unwrap_err();
+
+        assert!(matches!(error, router::RouterError::HandlerError(412, _)));
+    }
+
+    #[test]
+    fn it_prevents_moving_when_destination_exists() {
+        let mut db = get_repo("move_destination_exists");
+        let address = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1));
+        let file_path = "test/path";
+        let file_name = "test_filename";
+        let file_name_to = "test_filename_to";
+        let file_data = std::vec::Vec::from("SOME_DATA".as_bytes());
+
+        db.save(file_path, file_name, &file_data, None, &address)
+            .unwrap();
+        db.save(file_path, file_name_to, &file_data, None, &address)
+            .unwrap();
+
+        let error = db
+            .move_to(file_path, file_name, 0, file_path, file_name_to, &address)
+            .unwrap_err();
+
+        assert!(matches!(error, router::RouterError::HandlerError(412, _)));
     }
 }

@@ -189,6 +189,7 @@ impl FileClient {
     }
 }
 
+// TODO use files crate instead
 fn get_sync_information(headers: &http::HeaderMap) -> Option<crate::SyncInformation> {
     lazy_static::lazy_static! {
         static ref ETAG_REGEX: regex::Regex = regex::Regex::new(r#"\s*"(\d+)"\s*"#).unwrap();

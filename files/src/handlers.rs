@@ -1,60 +1,35 @@
 use std::convert::TryInto;
 
-/// Handler that takes care of PUT requests
+/// Handler that takes care of DELETE requests
 pub struct DeleteFileHandler {
-    pub file_repo: std::sync::Arc<std::sync::Mutex<files::db::FilesDB>>,
+    pub file_repo: std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 /// Handler that takes care of GET requests
 pub struct GetFileHandler {
-    pub file_repo: std::sync::Arc<std::sync::Mutex<files::db::FilesDB>>,
+    pub file_repo: std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
-/// Handler that takes care of GET requests
+/// Handler that takes care of MOVE requests
 pub struct MoveFileHandler {
-    pub file_repo: std::sync::Arc<std::sync::Mutex<files::db::FilesDB>>,
+    pub file_repo: std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 /// Handler that takes care of PUT requests
 pub struct PutFileHandler {
-    pub file_repo: std::sync::Arc<std::sync::Mutex<files::db::FilesDB>>,
+    pub file_repo: std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
 pub struct FileVersionsHandler {
-    pub file_repo: std::sync::Arc<std::sync::Mutex<files::db::FilesDB>>,
+    pub file_repo: std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>,
     pub matcher: Box<dyn router::matcher::Matcher>,
 }
 
-fn get_path_from_uri(uri: &http::Uri) -> Result<&str, router::RouterError> {
-    lazy_static::lazy_static! {
-        static ref URI_REGEX: regex::Regex = regex::Regex::new(r"^/(files|file-versions)/(.+)").unwrap();
-    }
-    let matches = URI_REGEX.captures(uri.path());
-    match matches {
-        Some(matches) => Ok(matches.get(2).unwrap().as_str()),
-        None => Err(router::InvalidRequest(String::from("Invalid url"))),
-    }
-}
-
-fn get_path_and_name_from_uri(uri: &http::Uri) -> Result<(String, String), router::RouterError> {
-    let full_path = get_path_from_uri(uri)?;
-    let full_path = std::path::PathBuf::from(full_path);
-    let file_path = full_path
-        .parent()
-        .unwrap_or(std::path::Path::new(""))
-        .to_string_lossy();
-    let file_name = full_path
-        .file_name()
-        .ok_or(router::InvalidRequest(String::from("Invalid url")))?
-        .to_string_lossy();
-    Ok((file_path.into(), file_name.into()))
-}
-
-fn get_response_builder(data: &files::db::FilesDbResponse, status: u16) -> http::response::Builder {
+fn get_response_builder(data: &crate::db::FilesDbResponse, status: u16) -> http::response::Builder {
     hyper::Response::builder()
         .status(status)
         .header("last-modified", data.timestamp.to_rfc2822())
@@ -71,13 +46,16 @@ impl router::Handler for DeleteFileHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = get_path_and_name_from_uri(&request.uri())?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
+        let (version, _timestamp) = super::get_version_info_from_headers(&request.headers());
+        let version = version.ok_or(router::HandlerError(400, String::from("Missing version")))?;
 
         let mut repo = self.file_repo.lock().unwrap();
 
         let data = repo.delete(
             file_path.as_ref(),
             file_name.as_ref(),
+            version,
             &request
                 .extensions()
                 .get::<std::net::SocketAddr>()
@@ -101,7 +79,7 @@ impl router::Handler for GetFileHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = get_path_and_name_from_uri(&request.uri())?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
 
         let is_get = request.method() == http::Method::GET;
 
@@ -150,14 +128,17 @@ impl router::Handler for MoveFileHandler {
             .try_into()
             .map_err(|e| super::map_error(&e, "Invalid destination", 400))?;
 
-        let (file_path_from, file_name_from) = get_path_and_name_from_uri(&request.uri())?;
-        let (file_path_to, file_name_to) = get_path_and_name_from_uri(&destination)?;
+        let (file_path_from, file_name_from) = crate::get_path_and_name_from_uri(&request.uri())?;
+        let (file_path_to, file_name_to) = crate::get_path_and_name_from_uri(&destination)?;
+        let (version, _timestamp) = super::get_version_info_from_headers(&request.headers());
+        let version = version.ok_or(router::HandlerError(400, String::from("Missing version")))?;
 
         let mut repo = self.file_repo.lock().unwrap();
 
         let data = repo.move_to(
             file_path_from.as_ref(),
             file_name_from.as_ref(),
+            version,
             file_path_to.as_ref(),
             file_name_to.as_ref(),
             &request
@@ -189,7 +170,8 @@ impl router::Handler for PutFileHandler {
             .unwrap()
             .ip();
         let (parts, body) = request.into_parts();
-        let (file_path, file_name) = get_path_and_name_from_uri(&parts.uri)?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(&parts.uri)?;
+        let (version, _timestamp) = super::get_version_info_from_headers(&parts.headers);
 
         let file_content = hyper::body::to_bytes(body)
             .await
@@ -202,6 +184,7 @@ impl router::Handler for PutFileHandler {
             file_path.as_ref(),
             file_name.as_ref(),
             &file_content,
+            version,
             &remote_address,
         )?;
 
@@ -221,7 +204,7 @@ impl router::Handler for FileVersionsHandler {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = get_path_and_name_from_uri(&request.uri())?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
 
         let repo = self.file_repo.lock().unwrap();
         let log = repo.get_history(file_path.as_ref(), file_name.as_ref())?;
@@ -249,14 +232,14 @@ mod tests {
 
     lazy_static::lazy_static!(static ref ADDRESS: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)););
 
-    fn get_repo(path: &str) -> std::sync::Arc<std::sync::Mutex<files::db::FilesDB>> {
+    fn get_repo(path: &str) -> std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>> {
         let path = std::path::PathBuf::from(TEST_PATH).join(path);
         if path.exists() {
             std::fs::remove_dir_all(&path)
                 .expect(format!("Failed to clean folder {:?}", path).as_str());
         }
         std::sync::Arc::new(std::sync::Mutex::new(
-            files::db::FilesDB::new(path).unwrap(),
+            crate::db::FilesDB::new(path).unwrap(),
         ))
     }
 
@@ -270,6 +253,7 @@ mod tests {
                 "keepass",
                 "pdb.kdbx",
                 "content of current file".as_bytes().to_owned().as_ref(),
+                None,
                 &ADDRESS,
             )
             .unwrap();
@@ -283,7 +267,7 @@ mod tests {
 
         let file_handler = super::GetFileHandler {
             file_repo,
-            matcher: crate::handlers::files::get_matcher(&hyper::Method::GET),
+            matcher: crate::get_matcher(&hyper::Method::GET),
         };
 
         let (parts, body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -313,6 +297,7 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/files/keepass/pdb.kdbx")
             .method("HEAD")
+            .header("ETag", "\"0\"")
             .body(hyper::Body::empty())
             .unwrap();
 
@@ -344,6 +329,7 @@ mod tests {
                 "keepass",
                 "pdb.kdbx",
                 "content of current file".as_bytes().to_owned().as_ref(),
+                None,
                 &ADDRESS,
             )
             .unwrap();
@@ -352,12 +338,13 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/files/keepass/pdb.kdbx")
             .method("DELETE")
+            .header("ETag", "\"0\"")
             .body(hyper::Body::empty())
             .unwrap();
 
         let file_handler = super::DeleteFileHandler {
             file_repo: file_repo.clone(),
-            matcher: crate::handlers::files::get_matcher(&hyper::Method::DELETE),
+            matcher: crate::get_matcher(&hyper::Method::DELETE),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -373,8 +360,6 @@ mod tests {
 
             let result = repo.get("keepass", "pdb.kdbx", true).unwrap_err();
 
-            println!("{:?}", result);
-
             assert!(matches!(result, router::RouterError::HandlerError(404, _)));
         }
     }
@@ -389,6 +374,7 @@ mod tests {
                 "keepass",
                 "pdb.kdbx.tmp",
                 "content of current file".as_bytes().to_owned().as_ref(),
+                None,
                 &ADDRESS,
             )
             .unwrap();
@@ -398,12 +384,13 @@ mod tests {
             .uri("/files/keepass/pdb.kdbx.tmp")
             .header("destination", "/files/keepass/pdb.kdbx")
             .method("MOVE")
+            .header("ETag", "\"0\"")
             .body(hyper::Body::empty())
             .unwrap();
 
         let file_handler = super::MoveFileHandler {
             file_repo: file_repo.clone(),
-            matcher: crate::handlers::files::get_matcher("MOVE"),
+            matcher: crate::get_matcher("MOVE"),
         };
 
         let (parts, _body) = file_handler.handle(req).await.unwrap().into_parts();
@@ -420,7 +407,7 @@ mod tests {
 
         let versions_handlers = super::FileVersionsHandler {
             file_repo: file_repo.clone(),
-            matcher: crate::handlers::files::get_matcher("GET"),
+            matcher: crate::get_matcher("GET"),
         };
 
         let (parts, body) = versions_handlers.handle(req).await.unwrap().into_parts();
