@@ -24,9 +24,9 @@ impl JRPCSetVolume {
 impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
     async fn handle(
         &self,
-        _parts: hyper::http::request::Parts,
+        parts: hyper::http::request::Parts,
         json_request: crate::handlers::jsonrpc::JRPCQuery,
-        _handler: &crate::handlers::jsonrpc::JsonrpcHandler,
+        handler: &crate::handlers::jsonrpc::JsonrpcHandler,
     ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
         let volume = json_request.params().and_then(|value| {
             if let serde_json::Value::Object(params) = value {
@@ -36,19 +36,19 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             }
         });
         // TODO improve this when async closures are better handled ?
-        let result = match volume {
+        let request = match volume {
             Some(volume) => match volume {
                 serde_json::Value::Number(volume) => {
                     match volume.as_f64().map(|v| v.max(0.0).min(100.0) as i16) {
-                        Some(volume) => Some(self.receiver.set_volume(volume).await),
+                        Some(volume) => Some(self.receiver.set_volume(volume)),
                         _ => None,
                     }
                 }
                 serde_json::Value::String(command) => {
                     if command == "increment" {
-                        Some(self.receiver.increment_volume(true).await)
+                        Some(self.receiver.increment_volume(true))
                     } else if command == "decrement" {
-                        Some(self.receiver.increment_volume(false).await)
+                        Some(self.receiver.increment_volume(false))
                     } else {
                         None
                     }
@@ -57,6 +57,23 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             },
             _ => None,
         };
+
+        let result = match request {
+            Some(request) => {
+                // We also want to unmute Kodi as it sometimes mutes itself
+                let query = crate::handlers::jsonrpc::JRPCQuery::new(
+                    String::from("Application.SetMute"),
+                    Some(serde_json::json!({
+                        "mute": serde_json::Value::from(false)
+                    })),
+                    json_request.id(),
+                );
+                let (volume, _) = futures::join!(request, handler.forward_jrpc(parts, query));
+                Some(volume)
+            }
+            None => None,
+        };
+
         result
             .map(|volume| {
                 crate::handlers::jsonrpc::JRPCResponse::new(
@@ -246,7 +263,7 @@ mod tests {
     ) -> crate::handlers::jsonrpc::JRPCQuery {
         serde_json::from_str(
             format!(
-                r#"{{"method":"Application.SetVolume", "params": {{"{}": {}}}}}"#,
+                r#"{{"method":"Application.SetVolume", "params": {{"{}": {}}}, "id": 42}}"#,
                 param, value
             )
             .as_str(),
@@ -290,12 +307,34 @@ mod tests {
         let mock = std::sync::Arc::new(mock);
         let jrpc = super::JRPCSetVolume::new(mock);
 
+        let mock_server: wiremock::MockServer = wiremock::MockServer::start().await;
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/jsonrpc"))
+            .and(wiremock::matchers::body_string(
+                r#"{"jsonrpc":"2.0","method":"Application.SetMute","params":{"mute":false},"id":42}"#,
+            ))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_bytes(
+                    r#""#,
+                ),
+            )
+            .expect(3)
+            .mount(&mock_server)
+            .await;
+
+        let jrpc_handler = crate::handlers::jsonrpc::JsonrpcHandler::builder()
+            .with_url(&mock_server.uri())
+            .build();
+
         // set volume
         let parts = get_parts();
         let request = get_request("volume", 25);
-        let handler = get_jrpc_handler();
 
-        let res = jrpc.handle(parts, request, handler.as_ref()).await.unwrap();
+        let res = jrpc
+            .handle(parts, request, jrpc_handler.as_ref())
+            .await
+            .unwrap();
         let res = res.result().to_owned().unwrap();
 
         assert_eq!(serde_json::Value::from(20), res);
@@ -303,9 +342,11 @@ mod tests {
         // increase volume
         let parts = get_parts();
         let request = get_request_str("volume", "increment");
-        let handler = get_jrpc_handler();
 
-        let res = jrpc.handle(parts, request, handler.as_ref()).await.unwrap();
+        let res = jrpc
+            .handle(parts, request, jrpc_handler.as_ref())
+            .await
+            .unwrap();
         let res = res.result().to_owned().unwrap();
 
         assert_eq!(serde_json::Value::from(30), res);
@@ -313,9 +354,11 @@ mod tests {
         // decrease volume
         let parts = get_parts();
         let request = get_request_str("volume", "decrement");
-        let handler = get_jrpc_handler();
 
-        let res = jrpc.handle(parts, request, handler.as_ref()).await.unwrap();
+        let res = jrpc
+            .handle(parts, request, jrpc_handler.as_ref())
+            .await
+            .unwrap();
         let res = res.result().to_owned().unwrap();
 
         assert_eq!(serde_json::Value::from(35), res);
@@ -323,10 +366,9 @@ mod tests {
         // invalid value
         let parts = get_parts();
         let request = get_request_str("invalid", "invalid");
-        let handler = get_jrpc_handler();
 
         let res = jrpc
-            .handle(parts, request, handler.as_ref())
+            .handle(parts, request, jrpc_handler.as_ref())
             .await
             .unwrap_err();
 

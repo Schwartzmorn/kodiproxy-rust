@@ -24,7 +24,7 @@ impl TestFixture {
                 "target": "{url}/jsonrpc"
             }},
             "logging": {{
-                "level": "DEBUG"
+                "level": "WARN"
             }},
             "receiver": {{
                 "target": "{url}"
@@ -69,12 +69,6 @@ impl Drop for TestFixture {
     fn drop(&mut self) {
         let exit_channel = std::mem::replace(&mut self.exit_channel, None).unwrap();
 
-        // if self.file_path.exists() {
-        //     if let Err(e) = std::fs::remove_dir_all(&self.file_path) {
-        //         log::error!("Failed to clean the folder after test: {:?}", e);
-        //     }
-        // }
-
         if let Err(e) = exit_channel.send(()) {
             log::error!("Failed to send the termination signal: {:?}", e);
         };
@@ -84,7 +78,6 @@ impl Drop for TestFixture {
 #[rstest::fixture]
 fn fixture(#[default("test")] test_name: &str, #[default(8080)] port: u16) -> TestFixture {
     let _ = env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Warn)
         .target(env_logger::Target::Stdout)
         .try_init();
     let file_path = format!("target/test/integration/{}", test_name);

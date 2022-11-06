@@ -87,10 +87,12 @@ impl router::Handler for GetFileHandler {
 
         let data = repo.get(file_path.as_ref(), file_name.as_ref(), is_get)?;
 
-        log::info!(
-            "Sending file with size {}",
-            &data.file.as_ref().unwrap().len()
-        );
+        if is_get {
+            log::info!(
+                "Sending file with size {}",
+                &data.file.as_ref().unwrap().len()
+            );
+        }
 
         Ok(get_response_builder(&data, 200)
             .header(

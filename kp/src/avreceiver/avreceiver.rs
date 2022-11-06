@@ -74,7 +74,7 @@ impl AVReceiverBuilder {
 
 #[derive(Debug, serde::Deserialize)]
 struct Value {
-    #[serde(rename = "$value")]
+    #[serde(rename = "value")]
     value: String,
 }
 
@@ -442,7 +442,7 @@ mod tests {
         assert_eq!((67, true), receiver.get_volume().await);
     }
 
-    #[test(tokio::test)]
+    #[test_log::test(tokio::test)]
     async fn it_mutes_and_unmutes() {
         let mock_server = wiremock::MockServer::start().await;
 

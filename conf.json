@@ -18,6 +18,6 @@
     "target": "http://localhost:8081"
   },
   "server": {
-    "host": "localhost:8079"
+    "host": "[::]:8079"
   }
 }

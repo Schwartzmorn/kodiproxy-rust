@@ -20,7 +20,8 @@ fn register_handlers_kp(
             cec_interface.clone(),
         ))
         .add_handlers(files::get_file_handlers(&configuration.file.root_path))
-        .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()));
+        .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()))
+        .add_handlers(handlers::avreceiver::get_handlers(avreceiver.clone()));
 }
 
 pub async fn serve_kp(

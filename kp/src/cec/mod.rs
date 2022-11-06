@@ -14,6 +14,7 @@ pub fn get_cec_connection(
     configuration: &crate::configuration::CECConfiguration,
 ) -> std::sync::Arc<std::sync::Mutex<dyn cec::CECInterface>> {
     if let Some(target) = &configuration.fake_target {
+        log::info!("Initializing fake CEC client on {}", &target);
         std::sync::Arc::new(std::sync::Mutex::new(cec_fake::CECFakeInterface {
             target: target.to_owned(),
         }))

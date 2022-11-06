@@ -143,11 +143,17 @@ impl JsonrpcHandler {
             .build()
             .unwrap();
 
+        log::trace!("Sending {:?}", &body);
+
         let mut request_builder = hyper::Request::builder()
             .method(parts.method)
             .uri(uri)
             .version(parts.version);
-        request_builder.headers_mut().unwrap().extend(parts.headers);
+
+        let headers = request_builder.headers_mut().unwrap();
+        headers.extend(parts.headers);
+        // the headers may come from a different request, so we let hyper do this one
+        headers.remove("Content-Length");
 
         let request = request_builder
             .body(hyper::body::Body::from(body))
@@ -219,6 +225,7 @@ impl router::Handler for JsonrpcHandler {
                 .map_err(|e| JsonrpcHandler::h_err("Jsonrpc request body is not valid json", &e))?;
 
             if let Some(overloader) = self.overloaders.get(json.method()) {
+                log::info!("Overloading method '{}'", json.method());
                 if json.params().is_none() {
                     return Err(JsonrpcHandler::h_err(
                         "Jsonrpc request did not contain any parameter",
