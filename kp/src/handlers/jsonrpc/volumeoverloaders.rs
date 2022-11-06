@@ -61,14 +61,34 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
         let result = match request {
             Some(request) => {
                 // We also want to unmute Kodi as it sometimes mutes itself
-                let query = crate::handlers::jsonrpc::JRPCQuery::new(
+                let query_unumte = crate::handlers::jsonrpc::JRPCQuery::new(
                     String::from("Application.SetMute"),
                     Some(serde_json::json!({
                         "mute": serde_json::Value::from(false)
                     })),
                     json_request.id(),
                 );
-                let (volume, _) = futures::join!(request, handler.forward_jrpc(parts, query));
+                let query_sound_max = crate::handlers::jsonrpc::JRPCQuery::new(
+                    String::from("Application.SetVolume"),
+                    Some(serde_json::json!({
+                        "volume": 100
+                    })),
+                    json_request.id(),
+                );
+                let mut parts_clone = http::request::Builder::new()
+                    .method(parts.method.clone())
+                    .uri(parts.uri.clone())
+                    .version(parts.version);
+
+                parts.headers.clone_into(parts_clone.headers_mut().unwrap());
+
+                let (parts_clone, _) = parts_clone.body(()).unwrap().into_parts();
+
+                let (volume, _, _) = futures::join!(
+                    request,
+                    handler.forward_jrpc(parts, query_unumte),
+                    handler.forward_jrpc(parts_clone, query_sound_max)
+                );
                 Some(volume)
             }
             None => None,
