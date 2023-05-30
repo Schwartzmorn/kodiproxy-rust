@@ -11,8 +11,14 @@ fn get_matcher(path: &str) -> Box<dyn router::matcher::Matcher> {
 pub fn get_handlers(
     receiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
 ) -> Vec<Box<dyn router::Handler>> {
-    vec![Box::from(handlers::AVReceiverVolumeHandler {
-        receiver: receiver.clone(),
-        matcher: get_matcher("volume"),
-    })]
+    vec![
+        Box::from(handlers::AVReceiverVolumeHandler {
+            receiver: receiver.clone(),
+            matcher: get_matcher("volume"),
+        }),
+        Box::from(handlers::AVReceiverPowerHandler {
+            receiver: receiver.clone(),
+            matcher: get_matcher("power"),
+        }),
+    ]
 }

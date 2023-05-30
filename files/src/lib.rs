@@ -143,8 +143,8 @@ mod tests {
 
         let expected_datetime = chrono::DateTime::<chrono::Utc>::from_utc(
             chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd(2022, 09, 24),
-                chrono::NaiveTime::from_hms(6, 0, 0),
+                chrono::NaiveDate::from_ymd_opt(2022, 09, 24).unwrap(),
+                chrono::NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
             ),
             chrono::Utc,
         );
@@ -166,8 +166,8 @@ mod tests {
 
         let expected_datetime = chrono::DateTime::<chrono::Utc>::from_utc(
             chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd(2022, 12, 31),
-                chrono::NaiveTime::from_hms_milli(18, 0, 0, 520),
+                chrono::NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
+                chrono::NaiveTime::from_hms_milli_opt(18, 0, 0, 520).unwrap(),
             ),
             chrono::Utc,
         );

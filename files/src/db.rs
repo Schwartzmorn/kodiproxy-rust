@@ -1,3 +1,4 @@
+use base64::Engine;
 use sha2::Digest;
 
 // Setup statements
@@ -554,7 +555,7 @@ where
 }
 
 fn digest(data: &Vec<u8>) -> String {
-    base64::encode(sha2::Sha256::digest(&data).to_vec())
+    base64::engine::general_purpose::STANDARD_NO_PAD.encode(sha2::Sha256::digest(&data).to_vec())
 }
 
 #[cfg(test)]

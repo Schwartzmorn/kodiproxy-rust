@@ -1,24 +1,24 @@
-fn parse_args() -> clap::ArgMatches {
-    clap::App::new("KodiProxy")
-        .author("Schwartzmorn")
-        .about("My one stop proxy for my pi")
-        .arg(
-            clap::Arg::new("configuration")
-                .short('c')
-                .long("configuration")
-                .value_name("FILE")
-                .help("path to the configuration file of the different modules"),
-        )
-        .arg(
-            clap::Arg::new("dump_configuration")
-                .long("dump_configuration")
-                .value_name("OUT_FILE")
-                .help("dump the configuration to file and exit"),
-        )
-        .get_matches()
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(name = "KodiProxy")]
+#[command(author = "Schwartzmorn")]
+#[command(about = "My one stop proxy for my pi", long_about = None)]
+struct Args {
+    #[arg(long)]
+    #[arg(help = "dump the configuration to file and exit")]
+    #[arg(value_name = "OUT_FILE")]
+    dump_configuration: Option<String>,
+
+    #[arg(short)]
+    #[arg(long)]
+    #[arg(help = "path to the configuration file of the different modules")]
+    #[arg(value_name = "FILE")]
+    configuration: Option<String>,
 }
 
-fn get_configuration(path: Option<&str>) -> kp::configuration::ProxyConfiguration {
+fn get_configuration(path: &Option<String>) -> kp::configuration::ProxyConfiguration {
     match path {
         Some(path) => {
             let configuration = std::fs::read(path).expect("Configuration file not found");
@@ -55,13 +55,13 @@ fn setup_logging(configuration: &kp::configuration::LoggingConfiguration) {
 
 #[tokio::main]
 async fn main() {
-    let args = parse_args();
+    let args = Args::parse();
 
-    let configuration = get_configuration(args.value_of("configuration"));
+    let configuration = get_configuration(&args.configuration);
 
     setup_logging(&configuration.logging);
 
-    if let Some(path) = args.value_of("dump_configuration") {
+    if let &Some(path) = &args.dump_configuration.as_deref() {
         dump_configuration(path, configuration);
         return;
     }

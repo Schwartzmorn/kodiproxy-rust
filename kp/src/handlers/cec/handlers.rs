@@ -31,7 +31,7 @@ impl router::Handler for CECPowerOn {
             .lock()
             .map_err(|_| {
                 router::HandlerError(
-                    500,
+                    503,
                     String::from("Failed to acquire lock on CEC connection"),
                 )
             })?
@@ -65,7 +65,7 @@ impl router::Handler for CECStandby {
             .lock()
             .map_err(|_| {
                 router::HandlerError(
-                    500,
+                    503,
                     String::from("Failed to acquire lock on CEC connection"),
                 )
             })?

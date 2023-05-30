@@ -18,9 +18,9 @@ pkg-config = "0.3"
 [dependencies]
 async-std = "1"
 async-trait = "0.1"
-clap = "3"
+clap = { version = "4", features = ["derive"] }
 dbus = "0.9"
-env_logger = "0.9"
+env_logger = "0.10"
 files = { path = "../files" }
 form_urlencoded = "1"
 futures = "0.3"
@@ -38,8 +38,8 @@ serde_urlencoded = "0.7"
 tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
-mockall = "0.11"
-rstest = "0.15"
+mockall = "0.11.4"
+rstest = "0.17"
 test-log = "0.2"
 url = "2"
 wiremock = "0.5"

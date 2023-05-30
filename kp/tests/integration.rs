@@ -3,7 +3,8 @@ use wiremock::MockServer;
 /// This fixture starts a mock server, the server, and cleans the path of the file repository and stops the servers at the end of the test
 #[allow(dead_code)]
 struct TestFixture {
-    mock: MockServer,
+    av_mock: MockServer,
+    kodi_mock: MockServer,
     file_path: std::path::PathBuf,
     exit_channel: Option<futures::channel::oneshot::Sender<()>>,
     serve: tokio::task::JoinHandle<()>, // Kept around just in case
@@ -11,29 +12,31 @@ struct TestFixture {
 
 impl TestFixture {
     pub fn new(file_path: &str, port: u16) -> Self {
-        let mock = futures::executor::block_on(wiremock::MockServer::start());
+        let av_mock = futures::executor::block_on(wiremock::MockServer::start());
+        let kodi_mock = futures::executor::block_on(wiremock::MockServer::start());
         let configuration = format!(
             r#"{{
             "cec": {{
-                "fakeTarget": "{url}"
+                "fakeTarget": "{av_url}"
             }},
             "file": {{
                 "rootPath": "{fp}"
             }},
             "jrpc": {{
-                "target": "{url}/jsonrpc"
+                "target": "{kodi_url}/jsonrpc"
             }},
             "logging": {{
                 "level": "WARN"
             }},
             "receiver": {{
-                "target": "{url}"
+                "target": "{av_url}"
             }},
             "server": {{
                 "host": "127.0.0.1:{port}"
             }}
         }}"#,
-            url = mock.uri(),
+            av_url = av_mock.uri(),
+            kodi_url = kodi_mock.uri(),
             fp = file_path,
             port = port
         );
@@ -54,10 +57,11 @@ impl TestFixture {
             rt_pouet.block_on(kp::serve_kp(&configuration, Some(receiver)));
         });
         // Wait for the server to have started
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         TestFixture {
-            mock,
+            av_mock,
+            kodi_mock,
             file_path,
             exit_channel: Some(exit_channel),
             serve,
@@ -139,7 +143,7 @@ async fn it_allows_saving_files(#[with("files", 8079)] fixture: TestFixture) {
 
     assert_eq!(200, parts.status);
     println!("{}", &body);
-    let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"Creation","version":0,"hash":"X5DLkAP39ZbbRCA79GreR1pKSQNtCJ2iUIugi4/Xpb8="}}]$"#).unwrap();
+    let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"Creation","version":0,"hash":"X5DLkAP39ZbbRCA79GreR1pKSQNtCJ2iUIugi4/Xpb8"}}]$"#).unwrap();
     assert!(re.is_match(&body));
 }
 
@@ -153,6 +157,7 @@ async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
 </item>"#;
 
     let request = r#"{"method":"Application.SetVolume", "params": {"volume": 25}}"#;
+    let kodi_response = r#"{"result":{"volume": 100}}"#;
 
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/goform/formiPhoneAppVolume.xml"))
@@ -161,7 +166,29 @@ async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
             wiremock::ResponseTemplate::new(200).set_body_bytes(String::from(receiver_response)),
         )
         .expect(1)
-        .mount(&fixture.mock)
+        .mount(&fixture.av_mock)
+        .await;
+
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/jsonrpc"))
+        .and(wiremock::matchers::body_string(r#"{"jsonrpc":"2.0","method":"Application.SetVolume","params":{"volume":100},"id":null}"#))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_bytes(String::from(kodi_response)),
+        )
+        .expect(1)
+        .mount(&fixture.kodi_mock)
+        .await;
+
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/jsonrpc"))
+        .and(wiremock::matchers::body_string(
+            r#"{"jsonrpc":"2.0","method":"Application.SetMute","params":{"mute":false},"id":null}"#,
+        ))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_bytes(String::from(kodi_response)),
+        )
+        .expect(1)
+        .mount(&fixture.kodi_mock)
         .await;
 
     let request = hyper::Request::builder()
