@@ -67,6 +67,10 @@ impl router::Handler for DeleteFileHandler {
             .body(hyper::Body::empty())
             .unwrap())
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
 }
 
 #[async_trait::async_trait]
@@ -105,6 +109,10 @@ impl router::Handler for GetFileHandler {
                 hyper::Body::empty()
             })
             .unwrap())
+    }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
     }
 }
 
@@ -154,6 +162,10 @@ impl router::Handler for MoveFileHandler {
             .body(hyper::Body::empty())
             .unwrap())
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
 }
 
 #[async_trait::async_trait]
@@ -194,6 +206,10 @@ impl router::Handler for PutFileHandler {
             .body(hyper::Body::empty())
             .unwrap())
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
 }
 
 #[async_trait::async_trait]
@@ -217,6 +233,10 @@ impl router::Handler for FileVersionsHandler {
                 serde_json::to_string(&log.entries).unwrap(),
             ))
             .unwrap())
+    }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
     }
 }
 

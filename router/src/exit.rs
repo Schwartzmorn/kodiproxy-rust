@@ -1,4 +1,4 @@
-static PANIC_MSG: &'static str = "Failed to exit server gracefully, panicing...";
+static PANIC_MSG: &'static str = "Failed to exit server gracefully, panicking...";
 
 struct ExitHandler {
     matcher: Box<dyn crate::matcher::Matcher>,
@@ -31,6 +31,10 @@ impl crate::router::Handler for ExitHandler {
             .status(204)
             .body(hyper::Body::empty())
             .unwrap())
+    }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(1)
     }
 }
 

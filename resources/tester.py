@@ -31,6 +31,31 @@ def _av_receiver(args):
     print(response.read())
 
 
+def _kodi(args):
+    url = 'http://localhost:{port}/jsonrpc/'
+
+    data = {
+        'jsonrpc': '2.0',
+        'id': 1
+    }
+    if args.action in ['mute', 'unmute']:
+        data.update('Application.SetMute', params={
+            'mute': args.action == 'mute'})
+    elif args.action in ['volume-decr', 'volume-incr']:
+        data.update('Application.SetVolume', params={
+            'volume': 'increment' if args.action == 'volume-incr' else 'decrement'})
+    elif args.action == 'introspect':
+        data.update(method='JSONRPC.Introspect')
+    else:
+        data.update(method='Application.Quit')
+
+    request = urllib.request.Request(url, method='POST', data=data)
+
+    response = urllib.request.urlopen(request)
+
+    print(response.read())
+
+
 if __name__ == '__main__':
     import argparse
 
@@ -52,6 +77,11 @@ if __name__ == '__main__':
     subparser.add_argument('-d', '--device', default=None, type=int,
                            help='logical address of the CEC device (default: broadcast)')
     subparser.set_defaults(func=_cec)
+
+    subparser = subparsers.add_parser('kodi', help='method for the cec')
+    subparser.add_argument(
+        'action', choices=['mute', 'unmute', 'volume-decr', 'volume-incr', 'off' 'introspect'])
+    subparser.set_defaults(func=_kodi)
 
     args = parser.parse_args()
     args.func(args)

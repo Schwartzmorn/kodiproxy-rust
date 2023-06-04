@@ -246,6 +246,10 @@ impl router::Handler for JsonrpcHandler {
         // when in doubt, forward
         self.forward(parts, body).await
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(10)
+    }
 }
 
 #[cfg(test)]

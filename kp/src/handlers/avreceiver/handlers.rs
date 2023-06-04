@@ -33,6 +33,10 @@ impl router::Handler for AVReceiverVolumeHandler {
             .body(hyper::Body::from(body))
             .unwrap())
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(10)
+    }
 }
 
 impl AVReceiverVolumeHandler {
@@ -134,6 +138,10 @@ impl router::Handler for AVReceiverPowerHandler {
             .status(200)
             .body(hyper::Body::from(body))
             .unwrap())
+    }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(10)
     }
 }
 

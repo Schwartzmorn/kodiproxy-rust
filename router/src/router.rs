@@ -9,6 +9,7 @@ pub trait Handler: Sync + Send {
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, RouterError>;
+    fn get_timeout(&self) -> std::time::Duration;
 }
 
 #[derive(Debug, PartialEq)]
@@ -46,29 +47,24 @@ impl Router {
         self
     }
 
+    async fn handle_inner(
+        &self,
+        request: hyper::Request<hyper::Body>,
+    ) -> Result<hyper::Response<hyper::Body>, RouterError> {
+        let handler = self.get_handler(&request)?;
+        async_std::future::timeout(handler.get_timeout(), handler.handle(request))
+            .await
+            .map_err(|_| RouterError::HandlerError(504, String::from("Handler time outed")))?
+    }
+
     pub async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
-        // TODO improve this when async closure are supported
-        match self.get_handler(&request) {
-            Ok(handler) => {
-                // TODO improve timeout mechanism ?
-                let duration = std::time::Duration::from_secs(5);
-                match async_std::future::timeout(duration, handler.handle(request))
-                    .await
-                    .map_err(|_| RouterError::HandlerError(504, String::from("Handler time outed")))
-                {
-                    // TODO improve when Result::flatten() is stable
-                    Ok(response) => match response {
-                        Ok(response) => Ok(response),
-                        Err(err) => Router::error(err),
-                    },
-                    Err(err) => Router::error(err),
-                }
-            }
-            Err(error) => Router::error(error),
-        }
+        Ok(self
+            .handle_inner(request)
+            .await
+            .unwrap_or_else(|err| Router::error(err)))
     }
 
     fn get_handler(
@@ -88,9 +84,9 @@ impl Router {
         Err(server_error)
     }
 
-    fn error(error: RouterError) -> Result<hyper::Response<hyper::Body>, std::convert::Infallible> {
+    fn error(error: RouterError) -> hyper::Response<hyper::Body> {
         log::info!("Sending error response {:?}", &error);
-        Ok(hyper::Response::builder()
+        hyper::Response::builder()
             .status(match &error {
                 RouterError::ForwardingError(_) => 502,
                 RouterError::HandlerError(status, _) => *status,
@@ -106,7 +102,7 @@ impl Router {
                 RouterError::MethodNotAllowed => String::from("Method Not Allowed"),
                 RouterError::NotFound => String::from("Not Found"),
             }))
-            .unwrap())
+            .unwrap()
     }
 }
 
@@ -144,6 +140,9 @@ mod tests {
                 .status(200)
                 .body(hyper::Body::from("a response"))
                 .unwrap())
+        }
+        fn get_timeout(&self) -> std::time::Duration {
+            std::time::Duration::from_secs(1)
         }
     }
 
@@ -193,7 +192,6 @@ mod tests {
 
     #[tokio::test]
     async fn it_answers_504_when_handler_timeouts() {
-        // TODO speed up this test if timeout improves
         let mut router = super::Router::new();
         router.add_handler(Box::new(MockHandler::new(6)));
 

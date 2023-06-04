@@ -28,22 +28,16 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         handler: &crate::handlers::jsonrpc::JsonrpcHandler,
     ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
-        let volume = json_request.params().and_then(|value| {
-            if let serde_json::Value::Object(params) = value {
-                params.get("volume")
-            } else {
-                None
-            }
+        let requested_volume = json_request.params().and_then(|params| match params {
+            serde_json::Value::Object(params) => params.get("volume"),
+            _ => None,
         });
-        // TODO improve this when async closures are better handled ?
-        let request = match volume {
-            Some(volume) => match volume {
-                serde_json::Value::Number(volume) => {
-                    match volume.as_f64().map(|v| v.max(0.0).min(100.0) as i16) {
-                        Some(volume) => Some(self.receiver.set_volume(volume)),
-                        _ => None,
-                    }
-                }
+        let request = requested_volume
+            .and_then(|volume| match volume {
+                serde_json::Value::Number(volume) => volume
+                    .as_f64()
+                    .map(|v| v.max(0.0).min(100.0) as i16)
+                    .and_then(|volume| Some(self.receiver.set_volume(volume))),
                 serde_json::Value::String(command) => {
                     if command == "increment" {
                         Some(self.receiver.increment_volume(true))
@@ -54,56 +48,45 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
                     }
                 }
                 _ => None,
-            },
-            _ => None,
-        };
-
-        let result = match request {
-            Some(request) => {
-                // We also want to unmute Kodi as it sometimes mutes itself
-                let query_unumte = crate::handlers::jsonrpc::JRPCQuery::new(
-                    String::from("Application.SetMute"),
-                    Some(serde_json::json!({
-                        "mute": serde_json::Value::from(false)
-                    })),
-                    json_request.id(),
-                );
-                let query_sound_max = crate::handlers::jsonrpc::JRPCQuery::new(
-                    String::from("Application.SetVolume"),
-                    Some(serde_json::json!({
-                        "volume": 100
-                    })),
-                    json_request.id(),
-                );
-                let mut parts_clone = http::request::Builder::new()
-                    .method(parts.method.clone())
-                    .uri(parts.uri.clone())
-                    .version(parts.version);
-
-                parts.headers.clone_into(parts_clone.headers_mut().unwrap());
-
-                let (parts_clone, _) = parts_clone.body(()).unwrap().into_parts();
-
-                let (volume, _, _) = futures::join!(
-                    request,
-                    handler.forward_jrpc(parts, query_unumte),
-                    handler.forward_jrpc(parts_clone, query_sound_max)
-                );
-                Some(volume)
-            }
-            None => None,
-        };
-
-        result
-            .map(|volume| {
-                crate::handlers::jsonrpc::JRPCResponse::new(
-                    Some(serde_json::json!(volume)),
-                    json_request.id(),
-                )
             })
             .ok_or(router::InvalidRequest(String::from(
                 "Invalid volume parameter",
-            )))
+            )))?;
+
+        // We also want to unmute Kodi as it sometimes mutes itself
+        let query_unumte = crate::handlers::jsonrpc::JRPCQuery::new(
+            String::from("Application.SetMute"),
+            Some(serde_json::json!({
+                "mute": serde_json::Value::from(false)
+            })),
+            json_request.id(),
+        );
+        let query_sound_max = crate::handlers::jsonrpc::JRPCQuery::new(
+            String::from("Application.SetVolume"),
+            Some(serde_json::json!({
+                "volume": 100
+            })),
+            json_request.id(),
+        );
+        let mut parts_clone = http::request::Builder::new()
+            .method(parts.method.clone())
+            .uri(parts.uri.clone())
+            .version(parts.version);
+
+        parts.headers.clone_into(parts_clone.headers_mut().unwrap());
+
+        let (parts_clone, _) = parts_clone.body(()).unwrap().into_parts();
+
+        let (volume, _, _) = futures::join!(
+            request,
+            handler.forward_jrpc(parts, query_unumte),
+            handler.forward_jrpc(parts_clone, query_sound_max)
+        );
+
+        Ok(crate::handlers::jsonrpc::JRPCResponse::new(
+            Some(serde_json::json!(volume)),
+            json_request.id(),
+        ))
     }
 }
 

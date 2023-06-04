@@ -43,6 +43,10 @@ impl router::Handler for CECPowerOn {
             .body(hyper::Body::empty())
             .unwrap())
     }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(5)
+    }
 }
 
 #[async_trait::async_trait]
@@ -78,5 +82,9 @@ impl router::Handler for CECStandby {
             .status(204)
             .body(hyper::Body::empty())
             .unwrap())
+    }
+
+    fn get_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(5)
     }
 }
