@@ -1,8 +1,8 @@
 [package]
 name = "kodiproxy"
-version = "0.1.0"
 authors = ["bigbro"]
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [lib]
 name = "kp"
@@ -13,33 +13,33 @@ name = "kodiproxy"
 path = "src/main.rs"
 
 [build-dependencies]
-pkg-config = "0.3"
+pkg-config = { workspace = true }
 
 [dependencies]
-async-std = "1"
-async-trait = "0.1"
-clap = { version = "4", features = ["derive"] }
-dbus = "0.9"
-env_logger = "0.10"
-files = { path = "../files" }
-form_urlencoded = "1"
-futures = "0.3"
-http = "0.2"
-hyper = "0.14"
-lazy_static = "1"
-libc = "0.2.0"
-log = "0.4"
-quick-xml = { version = "0", features = ["serialize"] }
-regex = "1"
-router = { path = "../router" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_urlencoded = "0.7"
-tokio = { version = "1", features = ["full"] }
+async-std = { workspace = true }
+async-trait = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+dbus = { workspace = true }
+env_logger = { workspace = true }
+files = { workspace = true }
+form_urlencoded = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
+lazy_static = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+quick-xml = { workspace = true, features = ["serialize"] }
+regex = { workspace = true }
+router = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_urlencoded = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
-mockall = "0.11.4"
-rstest = "0.17"
-test-log = "0.2"
-url = "2"
-wiremock = "0.5"
+mockall = { workspace = true }
+rstest = { workspace = true }
+test-log = { workspace = true }
+url = { workspace = true }
+wiremock = { workspace = true }

@@ -1,6 +1,7 @@
 pub use cec::CECInterface;
 pub use enums::CECLogicalAddress;
 
+#[allow(clippy::module_inception)]
 mod cec;
 mod cec_fake;
 mod enums;

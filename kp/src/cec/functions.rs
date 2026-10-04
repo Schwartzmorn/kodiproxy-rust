@@ -5,7 +5,7 @@ use crate::cec::structs::*;
 type LibcecConnectionT = *mut libc::c_void;
 
 #[link(name = "cec")]
-extern "C" {
+unsafe extern "C" {
     pub fn libcec_destroy(connection: LibcecConnectionT);
     pub fn libcec_initialise(configuration: *mut LibcecConfiguration) -> LibcecConnectionT;
     pub fn libcec_open(

@@ -1,3 +1,4 @@
+use base64::Engine;
 use sha2::Digest;
 
 static SQL_CREATE_FILES_TABLE: &str = "create table if not exists FILES (
@@ -248,7 +249,7 @@ fn decode_timestamp(timestamp: String) -> Result<chrono::DateTime<chrono::Utc>, 
 }
 
 fn digest(data: &Vec<u8>) -> String {
-    base64::encode(sha2::Sha256::digest(&data).to_vec())
+    base64::engine::general_purpose::STANDARD.encode(sha2::Sha256::digest(data))
 }
 
 fn map_sqlite_result<T, E>(result: Result<T, E>, message: &str) -> Result<T, router::RouterError>

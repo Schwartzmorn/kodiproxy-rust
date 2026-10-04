@@ -1,21 +1,22 @@
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CECConfiguration {
-    #[serde(rename = "cecVersion", default = "cec_default_version")]
+    #[serde(default = "cec_default_version")]
     pub cec_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "fakeTarget", default)]
     pub fake_target: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileConfiguration {
-    #[serde(rename = "rootPath", default = "file_default_root_path")]
+    #[serde(default = "file_default_root_path")]
     pub root_path: std::path::PathBuf,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JRPCConfiguration {
-    #[serde(default = "jrpc_default_target")]
     pub target: String,
 }
 
@@ -32,8 +33,9 @@ pub struct LoggingConfiguration {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AVReceiverConfiguration {
-    #[serde(rename = "desiredInput", default = "av_default_input")]
+    #[serde(default = "av_default_input")]
     pub desired_input: String,
     #[serde(default = "av_default_target")]
     pub target: String,

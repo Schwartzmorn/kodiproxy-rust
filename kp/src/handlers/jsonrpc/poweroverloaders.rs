@@ -6,12 +6,14 @@ pub struct JRPCShutdown {
 }
 
 impl JRPCGetSystemProperties {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
         Box::new(JRPCGetSystemProperties {})
     }
 }
 
 impl JRPCShutdown {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(
         avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
         cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
@@ -31,25 +33,22 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetSystemProperties {
         json_request: super::jsonrpc::JRPCQuery,
         _handler: &super::jsonrpc::JsonrpcHandler,
     ) -> Result<super::jsonrpc::JRPCResponse, router::RouterError> {
-        if let Some(serde_json::Value::Object(params)) = json_request.params() {
-            if let Some(serde_json::Value::Array(properties)) = params.get("properties") {
-                let mut result = serde_json::Map::<String, serde_json::Value>::new();
-                for value in properties {
-                    match value {
-                        serde_json::Value::String(property) => {
-                            result.insert(
-                                property.to_owned(),
-                                serde_json::Value::from(property == "canreboot"),
-                            );
-                        }
-                        _ => (),
-                    }
+        if let Some(serde_json::Value::Object(params)) = json_request.params()
+            && let Some(serde_json::Value::Array(properties)) = params.get("properties")
+        {
+            let mut result = serde_json::Map::<String, serde_json::Value>::new();
+            for value in properties {
+                if let serde_json::Value::String(property) = value {
+                    result.insert(
+                        property.to_owned(),
+                        serde_json::Value::from(property == "canreboot"),
+                    );
                 }
-                return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
-                    Some(serde_json::Value::Object(result)),
-                    json_request.id(),
-                ));
             }
+            return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
+                Some(serde_json::Value::Object(result)),
+                json_request.id(),
+            ));
         }
         Err(router::InvalidRequest(String::from(
             "Invalid properties parameter",
@@ -75,7 +74,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
             } else {
                 Err(router::HandlerError(
                     500,
-                    format!("Failed to switch off CEC"),
+                    "Failed to switch off CEC".to_string(),
                 ))
             }
         };

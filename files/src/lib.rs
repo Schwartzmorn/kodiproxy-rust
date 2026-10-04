@@ -1,3 +1,5 @@
+#![allow(clippy::double_must_use)]
+
 pub mod db;
 pub mod handlers;
 pub mod log;
@@ -39,7 +41,7 @@ pub fn get_version_info_from_headers(
         .get("last-modified")
         .and_then(|timestamp| timestamp.to_str().ok())
         .and_then(|timestamp| {
-            chrono::DateTime::parse_from_rfc3339(timestamp.as_ref())
+            chrono::DateTime::parse_from_rfc3339(timestamp)
                 .map(|ts| ts.with_timezone(&chrono::Utc))
                 .ok()
         })
@@ -77,7 +79,7 @@ pub fn get_path_and_name_from_uri(
 
 pub fn get_file_handlers(sqlite_path: &std::path::PathBuf) -> Vec<Box<dyn router::Handler>> {
     let file_repo = std::sync::Arc::new(std::sync::Mutex::new(
-        crate::db::FilesDB::new(&sqlite_path).unwrap(),
+        crate::db::FilesDB::new(sqlite_path).unwrap(),
     ));
     ::log::info!("Initializing file repository in {:?}", &sqlite_path);
     vec![
@@ -141,9 +143,9 @@ mod tests {
 
         let (version, datetime) = super::get_version_info_from_headers(&headers);
 
-        let expected_datetime = chrono::DateTime::<chrono::Utc>::from_utc(
+        let expected_datetime = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
             chrono::NaiveDateTime::new(
-                chrono::NaiveDate::from_ymd_opt(2022, 09, 24).unwrap(),
+                chrono::NaiveDate::from_ymd_opt(2022, 9, 24).unwrap(),
                 chrono::NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
             ),
             chrono::Utc,
@@ -164,7 +166,7 @@ mod tests {
 
         let (version, datetime) = super::get_version_info_from_headers(&headers);
 
-        let expected_datetime = chrono::DateTime::<chrono::Utc>::from_utc(
+        let expected_datetime = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
             chrono::NaiveDateTime::new(
                 chrono::NaiveDate::from_ymd_opt(2022, 12, 31).unwrap(),
                 chrono::NaiveTime::from_hms_milli_opt(18, 0, 0, 520).unwrap(),

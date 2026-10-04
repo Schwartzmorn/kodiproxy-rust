@@ -1,7 +1,7 @@
 static EMPTY_ARRAY: [&[u8]; 0] = [];
 
-static AVAHI_BUS: &'static str = "org.freedesktop.Avahi";
-static AVAHI_ENTRY_INTERFACE: &'static str = "org.freedesktop.Avahi.EntryGroup";
+static AVAHI_BUS: &str = "org.freedesktop.Avahi";
+static AVAHI_ENTRY_INTERFACE: &str = "org.freedesktop.Avahi.EntryGroup";
 
 pub struct AvahiConnection<'a> {
     dbus_connection: dbus::blocking::Connection,
@@ -25,7 +25,7 @@ impl<'a> AvahiConnection<'a> {
             std::time::Duration::from_millis(2000),
         );
 
-        dbus_proxy.method_call(
+        dbus_proxy.method_call::<(), _, _, _>(
             AVAHI_ENTRY_INTERFACE,
             "AddService",
             (
@@ -41,7 +41,7 @@ impl<'a> AvahiConnection<'a> {
             ),
         )?;
 
-        dbus_proxy.method_call(AVAHI_ENTRY_INTERFACE, "Commit", ())?;
+        dbus_proxy.method_call::<(), _, _, _>(AVAHI_ENTRY_INTERFACE, "Commit", ())?;
 
         log::info!("Registered server in Avahi");
 

@@ -162,7 +162,7 @@ impl FilesDB {
         }
 
         let db_version_to = self.get_current_version(file_path_to, file_name_to);
-        if let Some(_) = db_version_to {
+        if db_version_to.is_some() {
             return Err(router::HandlerError(
                 412,
                 String::from("Destination already exists"),
@@ -450,10 +450,8 @@ impl FilesDB {
         let history = self
             .get_history_inner(file_path, file_name)
             .map_err(|error| super::map_error(&error, "Failed to retrieve history", 500));
-        if let Ok(log) = &history {
-            if log.entries.is_empty() {
-                return Err(router::RouterError::NotFound);
-            }
+        if let Ok(log) = &history && log.entries.is_empty() {
+            return Err(router::RouterError::NotFound);
         }
         history
     }
@@ -555,7 +553,7 @@ where
 }
 
 fn digest(data: &Vec<u8>) -> String {
-    base64::engine::general_purpose::STANDARD_NO_PAD.encode(sha2::Sha256::digest(&data).to_vec())
+    base64::engine::general_purpose::STANDARD_NO_PAD.encode(sha2::Sha256::digest(data))
 }
 
 #[cfg(test)]
@@ -568,7 +566,7 @@ mod tests {
         let path = std::path::PathBuf::from(TEST_PATH).join(path);
         if path.exists() {
             std::fs::remove_dir_all(&path)
-                .expect(format!("Failed to clean folder {:?}", path).as_str());
+                .unwrap_or_else(|_| panic!("Failed to clean folder {:?}", path));
         }
         FilesDB::new(path).unwrap()
     }

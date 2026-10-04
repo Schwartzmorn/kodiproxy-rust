@@ -1,3 +1,5 @@
+#![allow(clippy::double_must_use)]
+
 mod avreceiver;
 mod cec;
 pub mod configuration;
@@ -28,7 +30,7 @@ pub async fn serve_kp(
     configuration: &configuration::ProxyConfiguration,
     exit_channel: Option<futures::channel::oneshot::Receiver<()>>,
 ) {
-    let addr = std::net::SocketAddr::from_str(&configuration.server.host.as_str())
+    let addr = std::net::SocketAddr::from_str(configuration.server.host.as_str())
         .expect("Incorrect host in server configuration");
 
     let connection = crate::dbus::AvahiConnection::new(addr.port());

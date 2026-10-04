@@ -17,7 +17,7 @@ type LibcecConnectionT = *mut libc::c_void;
 
 pub struct LibcecConfigurationBuilder {
     client_version: Result<u32, CECError>,
-    callbacks: &'static mut ICECCallbacks,
+    callbacks: *mut ICECCallbacks,
 }
 
 pub struct CECConnection {
@@ -34,8 +34,8 @@ impl ICECCallbacks {
             unsafe {
                 if let Some(msg) = message.as_ref().and_then(|m| m.message.as_ref()) {
                     let level = match message.as_ref().unwrap().level {
-                        CECLogLevel::ERROR => log::Level::Warn,
-                        CECLogLevel::WARNING => log::Level::Info,
+                        CECLogLevel::Error => log::Level::Warn,
+                        CECLogLevel::Warning => log::Level::Info,
                         _ => log::Level::Debug,
                     };
                     log::log!(
@@ -105,13 +105,11 @@ static mut ICECCALLBACKS_DEFAULT: ICECCallbacks = ICECCallbacks {
 
 impl LibcecConfigurationBuilder {
     pub fn new() -> Self {
-        unsafe {
-            LibcecConfigurationBuilder {
-                client_version: Err(CECError::InvalidConfiguration(
-                    "No version given for CEC client version",
-                )),
-                callbacks: &mut ICECCALLBACKS_DEFAULT,
-            }
+        LibcecConfigurationBuilder {
+            client_version: Err(CECError::InvalidConfiguration(
+                "No version given for CEC client version",
+            )),
+            callbacks: &raw mut ICECCALLBACKS_DEFAULT,
         }
     }
 
@@ -197,11 +195,7 @@ impl CECConnection {
         };
         log::debug!("Found {} CEC adapters", adapter_count);
         if adapter_count >= 0 {
-            Ok(buf
-                .iter()
-                .take(adapter_count as usize)
-                .map(|x| *x)
-                .collect())
+            Ok(buf.iter().take(adapter_count as usize).copied().collect())
         } else {
             Err(CECError::AdapterNotFound)
         }
@@ -223,10 +217,10 @@ impl CECConnection {
     where
         F: FnMut(&mut Self) -> libc::c_int,
     {
-        if (&mut func)(self) == 0 {
+        if func(self) == 0 {
             log::info!("Command failed, reinitializing connection");
             self.reinit()?;
-            if (&mut func)(self) == 0 {
+            if func(self) == 0 {
                 log::info!("Command failed after reinitializing connection, not retrying");
                 return Err(CECError::CommandFailed);
             }

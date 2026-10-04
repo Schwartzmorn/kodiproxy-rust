@@ -1,0 +1,18 @@
+{
+  "name": "Rust + OpenCode",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "UID": "1000",
+      "GID": "1000"
+    }
+  },
+  "remoteUser": "dev",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=rust-cargo-registry,target=/home/dev/.cargo/registry,type=volume",
+    "source=rust-cargo-git,target=/home/dev/.cargo/git,type=volume",
+    "source=rust-target,target=/workspace/target,type=volume"
+  ]
+}

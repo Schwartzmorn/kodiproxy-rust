@@ -71,7 +71,7 @@ impl TestFixture {
 
 impl Drop for TestFixture {
     fn drop(&mut self) {
-        let exit_channel = std::mem::replace(&mut self.exit_channel, None).unwrap();
+        let exit_channel = self.exit_channel.take().unwrap();
 
         if let Err(e) = exit_channel.send(()) {
             log::error!("Failed to send the termination signal: {:?}", e);
@@ -142,7 +142,7 @@ async fn it_allows_saving_files(#[with("files", 8079)] fixture: TestFixture) {
     let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
 
     assert_eq!(200, parts.status);
-    println!("{}", &body);
+    println!("{}", body);
     let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"Creation","version":0,"hash":"X5DLkAP39ZbbRCA79GreR1pKSQNtCJ2iUIugi4/Xpb8"}}]$"#).unwrap();
     assert!(re.is_match(&body));
 }

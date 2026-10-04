@@ -1,28 +1,28 @@
 [package]
 name = "files"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-trait = "0.1"
-base64 = "0.21"
-chrono = { version = "0.4", features = ["serde"] }
-http = "0.2"
-hyper = "0.14"
-lazy_static = "1"
-log = "0.4"
-regex = "1"
-router = { path = "../router" }
-rusqlite = "0"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.10"
-tokio = { version = "1", features = ["full"] }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+http = { workspace = true }
+hyper = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+router = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
-assert_matches = "1"
-env_logger = "0.10"
-test-log = "0.2"
-rstest = "0"
+assert_matches = { workspace = true }
+env_logger = { workspace = true }
+test-log = { workspace = true }
+rstest = { workspace = true }

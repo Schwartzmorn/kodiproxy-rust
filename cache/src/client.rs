@@ -50,10 +50,10 @@ impl FileClient {
 
         let file = body.to_vec();
 
-        return Ok(File {
+        Ok(File {
             sync_information,
             file,
-        });
+        })
     }
 
     pub async fn save(
@@ -208,8 +208,8 @@ fn get_sync_information(headers: &http::HeaderMap) -> Option<crate::SyncInformat
         .and_then(|h| h.to_str().ok())
         .and_then(|h| chrono::DateTime::parse_from_rfc3339(h).ok())
         .map(|ts| ts.with_timezone(&chrono::Utc))?;
-    return Some(crate::SyncInformation {
+    Some(crate::SyncInformation {
         last_synced_version: version,
         last_synced_timestamp: timestamp,
-    });
+    })
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::double_must_use)]
+
 pub use self::router::*;
 mod exit;
 pub mod matcher;
@@ -5,18 +7,18 @@ pub mod router;
 
 use futures::FutureExt;
 
-pub fn parse_url(url: &String) -> (String, String, Option<String>) {
+pub fn parse_url(url: &str) -> (String, String, Option<String>) {
     let url_re: regex::Regex =
         regex::Regex::new(r"^(?P<scheme>https?)://(?P<authority>[^/]+)(?P<path>.*)").unwrap();
 
     let captures = url_re
-        .captures(url.as_str())
+        .captures(url)
         .expect("Incorrect url for the jsonrpc server");
 
     (
         String::from(&captures["scheme"]),
         String::from(&captures["authority"]),
-        if captures["path"].len() > 0 {
+        if !captures["path"].is_empty() {
             Some(String::from(&captures["path"]))
         } else {
             None

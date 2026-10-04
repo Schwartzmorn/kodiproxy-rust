@@ -2,6 +2,7 @@ use self::jsonrpc::{JRPCQuery, JRPCResponse, JsonrpcHandler, JsonrpcOverloader};
 use self::poweroverloaders::*;
 use self::volumeoverloaders::*;
 
+#[allow(clippy::module_inception)]
 mod jsonrpc;
 mod poweroverloaders;
 mod volumeoverloaders;

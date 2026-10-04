@@ -1,3 +1,5 @@
+#![allow(clippy::double_must_use)]
+
 pub mod client;
 pub mod db;
 pub mod handlers;
@@ -25,5 +27,5 @@ pub async fn serve_cache() {
     let addr = std::net::SocketAddr::from_str("[::]:3000")
         .expect("Incorrect host in server configuration");
 
-    router::serve(addr, None, |router| register_handlers(router)).await;
+    router::serve(addr, None, register_handlers).await;
 }

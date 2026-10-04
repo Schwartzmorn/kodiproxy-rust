@@ -1,15 +1,15 @@
 [package]
 name = "router"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = "1"
-async-trait = "0.1"
-futures = "0.3"
-hyper = { version = "0.14", features = ["full"] }
-log = "0.4"
-regex = "1"
-tokio = { version = "1", features = ["full"] }
+async-std = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+hyper = { workspace = true, features = ["full"] }
+log = { workspace = true }
+regex = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

@@ -50,11 +50,11 @@ impl Matcher for MatcherImpl {
                 MethodMatcher::Exact(method) => request.method() == method,
             };
 
-            return if method_match {
+            if method_match {
                 MatcherResult::OK
             } else {
                 MatcherResult::UriOnly
-            };
+            }
         } else {
             MatcherResult::KO
         }

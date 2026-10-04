@@ -1,6 +1,6 @@
 /// Trait to implement to override a jsonrpc method
 ///
-/// The method [add_overloader](crate::jsonrpc::JsonrpcHandler::add_overloader()) nust be used to
+/// The method [add_overloader](crate::jsonrpc::JsonrpcHandler::add_overloader()) must be used to
 /// register the overloader
 #[async_trait::async_trait]
 pub trait JsonrpcOverloader: Sync + Send {
@@ -83,7 +83,7 @@ impl JRPCResponse {
 
 impl JsonrpcHandlerBuilder {
     /// Gives the full url (optionally the path) to target
-    pub fn with_url(mut self, url: &String) -> JsonrpcHandlerBuilder {
+    pub fn with_url(mut self, url: &str) -> JsonrpcHandlerBuilder {
         let (scheme, authority, path) = router::parse_url(url);
 
         self.scheme = scheme;
@@ -204,8 +204,8 @@ impl JsonrpcHandler {
 
 #[async_trait::async_trait]
 impl router::Handler for JsonrpcHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
@@ -220,7 +220,7 @@ impl router::Handler for JsonrpcHandler {
         let body_str = String::from_utf8(body.to_vec())
             .map_err(|e| JsonrpcHandler::h_err("Jsonrpc request body is not valid utf-8", &e))?;
 
-        if &parts.method == hyper::Method::POST {
+        if parts.method == hyper::Method::POST {
             let json: JRPCQuery = serde_json::from_str(body_str.as_str())
                 .map_err(|e| JsonrpcHandler::h_err("Jsonrpc request body is not valid json", &e))?;
 

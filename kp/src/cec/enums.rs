@@ -3,6 +3,7 @@ pub enum CECError {
     AdapterNotFound,
     CommandFailed,
     InitFailed,
+    #[expect(unused)]
     InvalidConfiguration(&'static str),
     OpenFailed,
 }
@@ -168,16 +169,16 @@ pub enum CECOpcode {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum CECLogLevel {
-    ERROR = 1,
-    WARNING = 2,
-    NOTICE = 4,
-    TRAFFIC = 8,
-    DEBUG = 16,
-    ALL = 31,
+    Error = 1,
+    Warning = 2,
+    Notice = 4,
+    Traffic = 8,
+    Debug = 16,
+    All = 31,
 }
 
 #[repr(C)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub enum CECAdapterType {
     Unknown = 0,

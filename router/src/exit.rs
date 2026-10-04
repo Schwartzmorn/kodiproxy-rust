@@ -1,4 +1,4 @@
-static PANIC_MSG: &'static str = "Failed to exit server gracefully, panicking...";
+static PANIC_MSG: &str = "Failed to exit server gracefully, panicking...";
 
 struct ExitHandler {
     matcher: Box<dyn crate::matcher::Matcher>,
@@ -7,8 +7,8 @@ struct ExitHandler {
 
 #[async_trait::async_trait]
 impl crate::router::Handler for ExitHandler {
-    fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn crate::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(

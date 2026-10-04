@@ -74,19 +74,15 @@ impl AVReceiverBuilder {
 
 #[derive(Debug, serde::Deserialize)]
 struct Value {
-    #[serde(rename = "value")]
     value: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
 struct Item {
-    #[serde(rename = "Power")]
     power: Option<Value>,
-    #[serde(rename = "InputFuncSelect")]
     input_func_select: Option<Value>,
-    #[serde(rename = "MasterVolume")]
     master_volume: Option<Value>,
-    #[serde(rename = "Mute")]
     mute: Option<Value>,
 }
 
@@ -218,21 +214,18 @@ impl AVReceiver {
         }
     }
 
-    fn db_to_percent(&self, volume: &String) -> i16 {
+    fn db_to_percent(&self, volume: &str) -> i16 {
         // we receive "--" in case the volume is at its minimum
-        let mut volume = volume
-            .parse::<f32>()
-            .or::<f32>(Ok(self.min_volume))
-            .unwrap();
+        let mut volume = volume.parse::<f32>().unwrap_or(self.min_volume);
 
-        volume = volume - self.min_volume;
+        volume -= self.min_volume;
         volume /= self.max_volume - self.min_volume;
         (volume * 100.0).round() as i16
     }
 
     fn percent_to_db(&self, volume: i16) -> f32 {
         let mut volume = volume as f32 / 100.0;
-        volume = volume * (self.max_volume - self.min_volume);
+        volume *= self.max_volume - self.min_volume;
         // even though we want a float, we want it to take an integer value
         (volume + self.min_volume).round()
     }
@@ -270,9 +263,14 @@ impl AVReceiverInterface for AVReceiver {
             if !is_powered_on {
                 let _ = self.send_command(format!("{}{}", CMD_POWER, "On")).await;
             }
+            let mut nr_of_retries = 10;
             while !is_input_ok {
+                if nr_of_retries == 0 {
+                    return false;
+                }
                 async_std::task::sleep(std::time::Duration::from_millis(500)).await;
                 is_input_ok = self.set_source().await;
+                nr_of_retries -= 1;
             }
             true
         } else {
@@ -300,7 +298,7 @@ impl AVReceiverInterface for AVReceiver {
             .map(|item| item.get_volume_db(&self))
             .unwrap_or(self.min_volume);
 
-        volume = volume + if increment { 1.0 } else { -1.0 };
+        volume += if increment { 1.0 } else { -1.0 };
         volume = volume.clamp(self.min_volume, self.max_volume);
 
         self.send_command(format!("{}{:.1}", CMD_VOLUME, volume))
@@ -368,13 +366,11 @@ mod tests {
 <Zone><value>MainZone</value></Zone>
 <Power><value>{}</value></Power>
 <Model><value></value></Model>
-<InputFuncSelect><value>{}</value></InputFuncSelect>
-<MasterVolume><value>{:.1}</value></MasterVolume>
+<InputFuncSelect><value>{input}</value></InputFuncSelect>
+<MasterVolume><value>{volume:.1}</value></MasterVolume>
 <Mute><value>{}</value></Mute>
 </item>"#,
             if is_powered { "ON" } else { "STANDBY" },
-            input,
-            volume,
             if mute { "on" } else { "off" }
         )
     }
@@ -396,7 +392,7 @@ mod tests {
 
         let receiver = get_receiver(&mock_server);
 
-        assert_eq!(false, receiver.is_powered_on().await);
+        assert!(!receiver.is_powered_on().await);
     }
 
     #[test(tokio::test)]
@@ -496,7 +492,7 @@ mod tests {
                 NCallsMatcher {
                     n_calls: n_calls_mutex.clone(),
                     min_calls: n_calls,
-                    max_calls: std::i16::MAX,
+                    max_calls: i16::MAX,
                 },
             )
         }

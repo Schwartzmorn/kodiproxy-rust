@@ -19,7 +19,7 @@ pub struct CECKeypress {
 }
 
 #[repr(C)]
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct CECAdapter {
     pub path: [libc::c_char; 1024],
     pub comm: [libc::c_char; 1024],
@@ -123,15 +123,6 @@ impl Default for CECAdapter {
         CECAdapter {
             path: [0; 1024],
             comm: [0; 1024],
-        }
-    }
-}
-
-impl Clone for CECAdapter {
-    fn clone(&self) -> CECAdapter {
-        CECAdapter {
-            path: self.path,
-            comm: self.comm,
         }
     }
 }

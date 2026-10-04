@@ -1,5 +1,6 @@
 pub use self::avreceiver::AVReceiverInterface;
 
+#[allow(clippy::module_inception)]
 mod avreceiver;
 
 #[cfg(test)]

@@ -38,16 +38,16 @@ fn get_response_builder(data: &crate::db::FilesDbResponse, status: u16) -> http:
 
 #[async_trait::async_trait]
 impl router::Handler for DeleteFileHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
-        let (version, _timestamp) = super::get_version_info_from_headers(&request.headers());
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(request.uri())?;
+        let (version, _timestamp) = super::get_version_info_from_headers(request.headers());
         let version = version.ok_or(router::HandlerError(400, String::from("Missing version")))?;
 
         let mut repo = self.file_repo.lock().unwrap();
@@ -75,15 +75,15 @@ impl router::Handler for DeleteFileHandler {
 
 #[async_trait::async_trait]
 impl router::Handler for GetFileHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(request.uri())?;
 
         let is_get = request.method() == http::Method::GET;
 
@@ -118,8 +118,8 @@ impl router::Handler for GetFileHandler {
 
 #[async_trait::async_trait]
 impl router::Handler for MoveFileHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
@@ -138,9 +138,9 @@ impl router::Handler for MoveFileHandler {
             .try_into()
             .map_err(|e| super::map_error(&e, "Invalid destination", 400))?;
 
-        let (file_path_from, file_name_from) = crate::get_path_and_name_from_uri(&request.uri())?;
+        let (file_path_from, file_name_from) = crate::get_path_and_name_from_uri(request.uri())?;
         let (file_path_to, file_name_to) = crate::get_path_and_name_from_uri(&destination)?;
-        let (version, _timestamp) = super::get_version_info_from_headers(&request.headers());
+        let (version, _timestamp) = super::get_version_info_from_headers(request.headers());
         let version = version.ok_or(router::HandlerError(400, String::from("Missing version")))?;
 
         let mut repo = self.file_repo.lock().unwrap();
@@ -170,8 +170,8 @@ impl router::Handler for MoveFileHandler {
 
 #[async_trait::async_trait]
 impl router::Handler for PutFileHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
@@ -214,15 +214,15 @@ impl router::Handler for PutFileHandler {
 
 #[async_trait::async_trait]
 impl router::Handler for FileVersionsHandler {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
     ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let (file_path, file_name) = crate::get_path_and_name_from_uri(&request.uri())?;
+        let (file_path, file_name) = crate::get_path_and_name_from_uri(request.uri())?;
 
         let repo = self.file_repo.lock().unwrap();
         let log = repo.get_history(file_path.as_ref(), file_name.as_ref())?;
@@ -258,7 +258,7 @@ mod tests {
         let path = std::path::PathBuf::from(TEST_PATH).join(path);
         if path.exists() {
             std::fs::remove_dir_all(&path)
-                .expect(format!("Failed to clean folder {:?}", path).as_str());
+                .unwrap_or_else(|_| panic!("Failed to clean folder {:?}", path));
         }
         std::sync::Arc::new(std::sync::Mutex::new(
             crate::db::FilesDB::new(path).unwrap(),

@@ -4,7 +4,7 @@ pub use self::RouterError::*;
 
 #[async_trait::async_trait]
 pub trait Handler: Sync + Send {
-    fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher>;
+    fn get_matcher(&self) -> &dyn crate::matcher::Matcher;
     async fn handle(
         &self,
         request: hyper::Request<hyper::Body>,
@@ -64,19 +64,19 @@ impl Router {
         Ok(self
             .handle_inner(request)
             .await
-            .unwrap_or_else(|err| Router::error(err)))
+            .unwrap_or_else(Router::error))
     }
 
     fn get_handler(
         &self,
         request: &hyper::Request<hyper::Body>,
-    ) -> Result<&Box<dyn Handler>, RouterError> {
+    ) -> Result<&dyn Handler, RouterError> {
         log::info!("{:?} {:?}", request.method(), request.uri());
         log::trace!("Headers: {:?}", request.headers());
         let mut server_error = RouterError::NotFound;
         for handler in self.handlers.iter() {
             match handler.get_matcher().matches(request) {
-                MatcherResult::OK => return Ok(handler),
+                MatcherResult::OK => return Ok(&**handler),
                 MatcherResult::UriOnly => server_error = RouterError::MethodNotAllowed,
                 MatcherResult::KO => (),
             }
@@ -106,6 +106,12 @@ impl Router {
     }
 }
 
+impl Default for Router {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     struct MockHandler {
@@ -128,8 +134,8 @@ mod tests {
 
     #[async_trait::async_trait]
     impl super::Handler for MockHandler {
-        fn get_matcher(&self) -> &Box<dyn crate::matcher::Matcher> {
-            &self.matcher
+        fn get_matcher(&self) -> &dyn crate::matcher::Matcher {
+            &*self.matcher
         }
         async fn handle(
             &self,

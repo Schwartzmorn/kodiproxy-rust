@@ -13,6 +13,7 @@ pub struct JRPCGetProperties {
 }
 
 impl JRPCSetVolume {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(
         receiver: std::sync::Arc<dyn AVReceiverInterface>,
     ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
@@ -36,8 +37,8 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             .and_then(|volume| match volume {
                 serde_json::Value::Number(volume) => volume
                     .as_f64()
-                    .map(|v| v.max(0.0).min(100.0) as i16)
-                    .and_then(|volume| Some(self.receiver.set_volume(volume))),
+                    .map(|v| (v.clamp(0.0, 100.0)) as i16)
+                    .map(|volume| self.receiver.set_volume(volume)),
                 serde_json::Value::String(command) => {
                     if command == "increment" {
                         Some(self.receiver.increment_volume(true))
@@ -91,6 +92,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
 }
 
 impl JRPCSetMute {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(
         receiver: std::sync::Arc<dyn AVReceiverInterface>,
     ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
@@ -143,14 +145,15 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetMute {
 }
 
 impl JRPCGetProperties {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(
         receiver: std::sync::Arc<dyn AVReceiverInterface>,
     ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
         Box::new(JRPCGetProperties { receiver })
     }
 
-    fn is_volume_property(param: &String) -> bool {
-        return param == "muted" || param == "volume";
+    fn is_volume_property(param: &str) -> bool {
+        param == "muted" || param == "volume"
     }
 
     async fn get_volume_properties(
@@ -158,7 +161,7 @@ impl JRPCGetProperties {
         volume_properties: &Vec<String>,
     ) -> Option<serde_json::Map<String, serde_json::Value>> {
         if volume_properties.is_empty() {
-            return None;
+            None
         } else {
             let (volume, mute) = self.receiver.get_volume().await;
             let mut res = serde_json::Map::<String, serde_json::Value>::new();
@@ -169,7 +172,7 @@ impl JRPCGetProperties {
                     res.insert(param.to_owned(), serde_json::Value::from(mute));
                 }
             }
-            return Some(res);
+            Some(res)
         }
     }
 
@@ -190,12 +193,8 @@ impl JRPCGetProperties {
 
             let response = handler.forward_jrpc(parts, query).await?;
 
-            match response.result() {
-                Some(res) => match res {
-                    serde_json::Value::Object(map) => return Ok(map.to_owned()),
-                    _ => (),
-                },
-                None => (),
+            if let Some(serde_json::Value::Object(map)) = response.result() {
+                return Ok(map.to_owned());
             }
         }
         Ok(serde_json::Map::<String, serde_json::Value>::new())
@@ -210,46 +209,38 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
         json_request: crate::handlers::jsonrpc::JRPCQuery,
         handler: &crate::handlers::jsonrpc::JsonrpcHandler,
     ) -> Result<crate::handlers::jsonrpc::JRPCResponse, router::RouterError> {
-        if let Some(serde_json::Value::Object(params)) = json_request.params() {
-            if let Some(serde_json::Value::Array(properties)) = params.get("properties") {
-                let mut volume_properties = Vec::<String>::new();
-                let mut other_properties = Vec::<String>::new();
+        if let Some(serde_json::Value::Object(params)) = json_request.params()
+            && let Some(serde_json::Value::Array(properties)) = params.get("properties")
+        {
+            let mut volume_properties = Vec::<String>::new();
+            let mut other_properties = Vec::<String>::new();
 
-                for param in properties {
-                    match param {
-                        serde_json::Value::String(param) => {
-                            if JRPCGetProperties::is_volume_property(param) {
-                                volume_properties.push(param.to_owned());
-                            } else {
-                                other_properties.push(param.to_owned());
-                            }
-                        }
-                        _ => (),
+            for param in properties {
+                if let serde_json::Value::String(param) = param {
+                    if JRPCGetProperties::is_volume_property(param) {
+                        volume_properties.push(param.to_owned());
+                    } else {
+                        other_properties.push(param.to_owned());
                     }
                 }
-
-                let (volume_props, other_props) = futures::join!(
-                    self.get_volume_properties(&volume_properties),
-                    JRPCGetProperties::get_other_properties(
-                        parts,
-                        &json_request,
-                        handler,
-                        other_properties
-                    )
-                );
-
-                let mut other_props = other_props?;
-
-                if let Some(properties) = volume_props {
-                    for (key, value) in properties {
-                        other_props.insert(key, value);
-                    }
-                }
-                return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
-                    Some(serde_json::Value::Object(other_props)),
-                    json_request.id(),
-                ));
             }
+
+            let (volume_props, other_props) = futures::join!(
+                self.get_volume_properties(&volume_properties),
+                JRPCGetProperties::get_other_properties(parts, &json_request, handler, other_properties)
+            );
+
+            let mut other_props = other_props?;
+
+            if let Some(properties) = volume_props {
+                for (key, value) in properties {
+                    other_props.insert(key, value);
+                }
+            }
+            return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
+                Some(serde_json::Value::Object(other_props)),
+                json_request.id(),
+            ));
         }
         Err(router::InvalidRequest(String::from(
             "Invalid properties parameter",

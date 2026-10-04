@@ -13,8 +13,8 @@ pub struct CECStandby {
 // TODO reduce copy paste
 #[async_trait::async_trait]
 impl router::Handler for CECPowerOn {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
@@ -51,8 +51,8 @@ impl router::Handler for CECPowerOn {
 
 #[async_trait::async_trait]
 impl router::Handler for CECStandby {
-    fn get_matcher(&self) -> &Box<dyn router::matcher::Matcher> {
-        &self.matcher
+    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
+        &*self.matcher
     }
 
     async fn handle(
