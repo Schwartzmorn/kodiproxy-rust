@@ -23,12 +23,12 @@ impl super::CECInterface for CECFakeInterface {
             "Received stand by request for device {:?}",
             cec_logical_address
         );
-        let request = hyper::Request::builder()
-            .method("GET")
-            .uri(self.target.to_owned() + "cec/standby")
-            .body(hyper::body::Body::empty())
-            .unwrap();
-        futures::executor::block_on(hyper::Client::new().request(request)).unwrap();
+        futures::executor::block_on(
+            crate::reqwest_client()
+                .get(self.target.to_owned() + "cec/standby")
+                .send(),
+        )
+        .unwrap();
         Ok(())
     }
 }

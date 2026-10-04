@@ -6,10 +6,12 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = { workspace = true }
-async-trait = { workspace = true }
+axum = { workspace = true }
 futures = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 log = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

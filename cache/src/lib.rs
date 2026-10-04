@@ -2,7 +2,6 @@
 
 pub mod client;
 pub mod db;
-pub mod handlers;
 use std::str::FromStr;
 
 pub struct SyncInformation {
@@ -19,13 +18,9 @@ fn map_error<E: std::fmt::Debug, S: std::fmt::Display>(
     router::HandlerError(error_code, format!("{}: {:?}", msg, e))
 }
 
-fn register_handlers(_router: &mut router::Router) {
-    todo!();
-}
-
 pub async fn serve_cache() {
     let addr = std::net::SocketAddr::from_str("[::]:3000")
         .expect("Incorrect host in server configuration");
 
-    router::serve(addr, None, register_handlers).await;
+    router::serve(addr, None, axum::Router::new()).await;
 }

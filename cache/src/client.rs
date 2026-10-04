@@ -1,3 +1,10 @@
+fn reqwest_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Failed to build HTTP client")
+}
+
 pub struct FileClient {
     scheme: String,
     authority: String,
@@ -15,19 +22,18 @@ pub struct MoveInformation {
 
 impl FileClient {
     pub async fn get(&self, file_path: &str, file_name: &str) -> Result<File, router::RouterError> {
-        let request = self
-            .get_request_builder(file_path, file_name)
-            .method(http::Method::GET)
-            .body(hyper::Body::empty())
-            .unwrap();
-
-        let response = hyper::Client::new().request(request).await.map_err(|e| {
-            crate::map_error(
-                &e,
-                format!("Error while retrieving file {}/{}", file_path, file_name,),
-                500,
-            )
-        })?;
+        let response = reqwest_client()
+            .get(self.get_url(file_path, file_name))
+            .version(http::Version::HTTP_11)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::map_error(
+                    &e,
+                    format!("Error while retrieving file {}/{}", file_path, file_name,),
+                    500,
+                )
+            })?;
 
         match response.status() {
             http::StatusCode::OK => {}
@@ -36,19 +42,17 @@ impl FileClient {
                 return Err(router::RouterError::HandlerError(
                     500,
                     format!("Error while retrieving file: received code {}", code),
-                ))
+                ));
             }
         }
 
         let sync_information = get_sync_information(response.headers());
 
-        let (_, body) = response.into_parts();
-
-        let body = hyper::body::to_bytes(body)
+        let file = response
+            .bytes()
             .await
-            .map_err(|e| crate::map_error(&e, "Error while decoding file", 500))?;
-
-        let file = body.to_vec();
+            .map_err(|e| crate::map_error(&e, "Error while decoding file", 500))?
+            .to_vec();
 
         Ok(File {
             sync_information,
@@ -62,19 +66,19 @@ impl FileClient {
         file_name: &str,
         file: Vec<u8>,
     ) -> Result<Option<crate::SyncInformation>, router::RouterError> {
-        let request = self
-            .get_request_builder(file_path, file_name)
-            .method(http::Method::PUT)
-            .body(hyper::Body::from(file))
-            .unwrap();
-
-        let response = hyper::Client::new().request(request).await.map_err(|e| {
-            crate::map_error(
-                &e,
-                format!("Error while saving file {}/{}", file_path, file_name,),
-                500,
-            )
-        })?;
+        let response = reqwest_client()
+            .put(self.get_url(file_path, file_name))
+            .version(http::Version::HTTP_11)
+            .body(file)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::map_error(
+                    &e,
+                    format!("Error while saving file {}/{}", file_path, file_name,),
+                    500,
+                )
+            })?;
 
         let sync_information = get_sync_information(response.headers());
 
@@ -92,19 +96,18 @@ impl FileClient {
         file_path: &str,
         file_name: &str,
     ) -> Result<Option<crate::SyncInformation>, router::RouterError> {
-        let request = self
-            .get_request_builder(file_path, file_name)
-            .method(http::Method::DELETE)
-            .body(hyper::Body::empty())
-            .unwrap();
-
-        let response = hyper::Client::new().request(request).await.map_err(|e| {
-            crate::map_error(
-                &e,
-                format!("Error while deleting file {}/{}", file_path, file_name,),
-                500,
-            )
-        })?;
+        let response = reqwest_client()
+            .delete(self.get_url(file_path, file_name))
+            .version(http::Version::HTTP_11)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::map_error(
+                    &e,
+                    format!("Error while deleting file {}/{}", file_path, file_name,),
+                    500,
+                )
+            })?;
 
         let sync_information = get_sync_information(response.headers());
 
@@ -124,36 +127,36 @@ impl FileClient {
         file_path_to: &str,
         file_name_to: &str,
     ) -> Result<MoveInformation, router::RouterError> {
-        let request = self
-            .get_request_builder(file_path_from, file_name_from)
+        let response = reqwest_client()
+            .request(
+                http::Method::from_bytes(b"MOVE").unwrap(),
+                self.get_url(file_path_from, file_name_from),
+            )
+            .version(http::Version::HTTP_11)
             .header(
                 "destination",
                 format!("/files/{}/{}", file_path_to, file_name_to),
             )
-            .method("MOVE")
-            .body(hyper::Body::empty())
-            .unwrap();
-
-        let response = hyper::Client::new().request(request).await.map_err(|e| {
-            crate::map_error(
-                &e,
-                format!(
-                    "Error while deleting file {}/{}",
-                    file_path_from, file_name_from,
-                ),
-                500,
-            )
-        })?;
+            .send()
+            .await
+            .map_err(|e| {
+                crate::map_error(
+                    &e,
+                    format!(
+                        "Error while deleting file {}/{}",
+                        file_path_from, file_name_from,
+                    ),
+                    500,
+                )
+            })?;
 
         let from_sync_information = get_sync_information(response.headers());
 
-        let request = self
-            .get_request_builder(file_path_to, file_name_to)
-            .method(http::Method::HEAD)
-            .body(hyper::Body::empty())
-            .unwrap();
-
-        let response_to = hyper::Client::new().request(request).await;
+        let response_to = reqwest_client()
+            .head(self.get_url(file_path_to, file_name_to))
+            .version(http::Version::HTTP_11)
+            .send()
+            .await;
 
         let to_sync_information = match response_to {
             Ok(response) => get_sync_information(response.headers()),
@@ -172,20 +175,9 @@ impl FileClient {
         }
     }
 
-    fn get_request_builder(&self, file_path: &str, file_name: &str) -> http::request::Builder {
+    fn get_url(&self, file_path: &str, file_name: &str) -> String {
         let path = format!("/files/{}/{}", file_path, file_name);
-
-        let uri = hyper::Uri::builder()
-            .scheme(self.scheme.as_str())
-            .authority(self.authority.as_str())
-            .path_and_query(path)
-            .build()
-            .unwrap();
-
-        hyper::Request::builder()
-            .method(&hyper::Method::GET)
-            .uri(uri.to_owned())
-            .version(http::Version::HTTP_11)
+        format!("{}://{}{}", self.scheme, self.authority, path)
     }
 }
 

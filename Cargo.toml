@@ -8,6 +8,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+axum = "0.8"
 async-std = "1"
 async-trait = "0.1"
 assert_matches = "1"
@@ -19,8 +20,8 @@ env_logger = "0.11"
 files = { path = "files" }
 form_urlencoded = "1"
 futures = "0.3"
-http = "0.2"
-hyper = "0.14"
+http = "1.5"
+hyper = "1.11"
 lazy_static = "1"
 libc = "0.2.190"
 log = "0.4"
@@ -28,6 +29,7 @@ mockall = "0.15.0"
 pkg-config = "0.3"
 quick-xml = "0"
 regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 router = { path = "router" }
 rusqlite = "0"
 rstest = "0.27"
@@ -37,5 +39,6 @@ serde_urlencoded = "0.7"
 sha2 = "0.11"
 test-log = "0.2"
 tokio = "1"
+tower-http = { version = "0.7", features = ["timeout"] }
 url = "2"
 wiremock = "0.6"

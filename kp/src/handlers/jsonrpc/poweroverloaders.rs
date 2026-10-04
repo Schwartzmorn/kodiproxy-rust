@@ -95,7 +95,7 @@ mod test {
     fn parts() -> http::request::Parts {
         let (parts, _) = hyper::Request::builder()
             .uri("https://localhost:8080/jsonrpc")
-            .body(hyper::Body::empty())
+            .body(axum::body::Body::empty())
             .unwrap()
             .into_parts();
         parts

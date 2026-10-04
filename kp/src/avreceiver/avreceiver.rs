@@ -156,25 +156,18 @@ impl AVReceiver {
         cmd: String,
         expect_body: bool,
     ) -> Result<Item, router::RouterError> {
-        let uri = hyper::Uri::builder()
-            .scheme(self.scheme.as_str())
-            .authority(self.authority.as_str())
-            .path_and_query(format!("{}{}", "/goform/", cmd).as_str())
-            .build()
-            .unwrap();
+        let url = format!("{}://{}/goform/{}", self.scheme, self.authority, cmd);
+        let response = crate::reqwest_client()
+            .get(url)
+            .version(http::Version::HTTP_11)
+            .send()
+            .await
+            .map_err(|err| {
+                AVReceiver::error("Error while querying receiver with command", &cmd, err)
+            })?;
 
-        let request = hyper::Request::builder()
-            .method(hyper::Method::GET)
-            .uri(uri)
-            .version(hyper::Version::HTTP_11)
-            .body(hyper::body::Body::empty())
-            .unwrap();
-
-        let mut response = hyper::Client::new().request(request).await.map_err(|err| {
-            AVReceiver::error("Error while querying receiver with command", &cmd, err)
-        })?;
-
-        let bytes = hyper::body::to_bytes(response.body_mut())
+        let bytes = response
+            .bytes()
             .await
             .map_err(|err| {
                 AVReceiver::error("Could not read av receiver response to command", &cmd, err)

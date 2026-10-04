@@ -1,9 +1,17 @@
 #![allow(clippy::double_must_use)]
 
-pub use self::router::*;
 mod exit;
-pub mod matcher;
-pub mod router;
+
+#[derive(Debug, PartialEq)]
+pub enum RouterError {
+    ForwardingError(String),
+    HandlerError(u16, String),
+    InvalidRequest(String),
+    MethodNotAllowed,
+    NotFound,
+}
+
+pub use self::RouterError::*;
 
 use futures::FutureExt;
 
@@ -43,59 +51,32 @@ async fn shutdown_signal(exit_channel: futures::channel::oneshot::Receiver<()>) 
     }
 }
 
-pub async fn serve<F>(
+pub async fn serve(
     host: std::net::SocketAddr,
     exit_channel: Option<futures::channel::oneshot::Receiver<()>>,
-    register_handlers: F,
-) where
-    F: FnOnce(&mut Router),
-{
-    let mut exit_sender: Option<futures::channel::oneshot::Sender<()>> = None;
-
-    let exit_receiver = match exit_channel {
-        Some(receiver) => receiver,
+    axum_router: axum::Router,
+) {
+    let (exit_receiver, axum_router) = match exit_channel {
+        Some(receiver) => (receiver, axum_router),
         None => {
-            // this ultimately means the "quit" handler is only setup if the receiver is not given in input
             let (sender, receiver) = futures::channel::oneshot::channel::<()>();
-            exit_sender = Some(sender);
-            receiver
+            (receiver, exit::add_exit_route(axum_router, sender))
         }
     };
 
-    let mut router = router::Router::new();
-    if let Some(exit_sender) = exit_sender {
-        router.add_handler(exit::get_handler(exit_sender));
-    }
-    register_handlers(&mut router);
-    let router = std::sync::Arc::new(router);
+    let listener = match tokio::net::TcpListener::bind(host).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            log::error!("server error: {}", e);
+            return;
+        }
+    };
 
-    let make_svc =
-        hyper::service::make_service_fn(move |connection: &hyper::server::conn::AddrStream| {
-            let remote_address = connection.remote_addr();
-
-            match remote_address {
-                std::net::SocketAddr::V4(addr) => {
-                    log::debug!("Got connection from ipv4 {:?}", addr.ip());
-                }
-                std::net::SocketAddr::V6(addr) => {
-                    log::debug!("Got connection from ipv6 {:?}", addr.ip());
-                    log::debug!("IPv4 {:?}", addr.ip().to_ipv4());
-                }
-            }
-
-            let router = router.clone();
-            async move {
-                Ok::<_, std::convert::Infallible>(hyper::service::service_fn(move |mut req| {
-                    req.extensions_mut().insert(remote_address);
-                    let router = router.clone();
-                    async move { router.handle(req).await }
-                }))
-            }
-        });
-
-    let server = hyper::Server::bind(&host).serve(make_svc);
-
-    let graceful = server.with_graceful_shutdown(shutdown_signal(exit_receiver));
+    let graceful = axum::serve(
+        listener,
+        axum_router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal(exit_receiver));
 
     log::info!("Server now listening on {:?}", host);
 

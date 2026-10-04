@@ -16,6 +16,7 @@ path = "src/main.rs"
 pkg-config = { workspace = true }
 
 [dependencies]
+axum = { workspace = true }
 async-std = { workspace = true }
 async-trait = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
@@ -31,15 +32,18 @@ libc = { workspace = true }
 log = { workspace = true }
 quick-xml = { workspace = true, features = ["serialize"] }
 regex = { workspace = true }
+reqwest = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+tower-http = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
 url = { workspace = true }
 wiremock = { workspace = true }

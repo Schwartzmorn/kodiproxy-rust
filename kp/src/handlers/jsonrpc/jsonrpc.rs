@@ -27,7 +27,6 @@ pub struct JsonrpcHandlerBuilder {
 pub struct JsonrpcHandler {
     scheme: String,
     authority: String,
-    matcher: Box<dyn router::matcher::Matcher>,
     overloaders: std::collections::HashMap<String, Box<dyn JsonrpcOverloader>>,
     path: String,
 }
@@ -110,10 +109,6 @@ impl JsonrpcHandlerBuilder {
         Box::from(JsonrpcHandler {
             scheme: self.scheme,
             authority: self.authority,
-            matcher: router::matcher::builder()
-                .exact_path(&self.path)
-                .build()
-                .unwrap(),
             overloaders: self.overloaders,
             path: self.path,
         })
@@ -135,36 +130,38 @@ impl JsonrpcHandler {
         &self,
         parts: hyper::http::request::Parts,
         body: hyper::body::Bytes,
-    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
-        let uri = hyper::Uri::builder()
-            .scheme(self.scheme.as_str())
-            .authority(self.authority.as_str())
-            .path_and_query(self.path.as_str())
-            .build()
-            .unwrap();
+    ) -> Result<hyper::Response<axum::body::Body>, router::RouterError> {
+        let url = format!("{}://{}{}", self.scheme, self.authority, self.path);
 
-        log::trace!("Sending {:?}", &body);
+        log::trace!("Sending {:?}", body);
 
-        let mut request_builder = hyper::Request::builder()
-            .method(parts.method)
-            .uri(uri)
-            .version(parts.version);
+        let mut headers = parts.headers;
+        // Headers from another request may have a stale content length.
+        headers.remove(http::header::CONTENT_LENGTH);
 
-        let headers = request_builder.headers_mut().unwrap();
-        headers.extend(parts.headers);
-        // the headers may come from a different request, so we let hyper do this one
-        headers.remove("Content-Length");
-
-        let request = request_builder
-            .body(hyper::body::Body::from(body))
-            .map_err(|err| {
-                JsonrpcHandler::f_err("Error while building the forwarding jsonrpc request", &err)
-            })?;
-
-        hyper::Client::new()
-            .request(request)
+        let response = crate::reqwest_client()
+            .request(parts.method, url)
+            .version(parts.version)
+            .headers(headers)
+            .body(body)
+            .send()
             .await
-            .map_err(|err| JsonrpcHandler::f_err("Error while forwarding jsonrpc request", &err))
+            .map_err(|err| JsonrpcHandler::f_err("Error while forwarding jsonrpc request", &err))?;
+
+        let status = response.status();
+        let version = response.version();
+        let headers = response.headers().clone();
+        let body = response.bytes().await.map_err(|err| {
+            JsonrpcHandler::f_err("Error while reading forwarded jsonrpc response", &err)
+        })?;
+
+        let mut response_builder = hyper::Response::builder().status(status).version(version);
+        response_builder.headers_mut().unwrap().extend(headers);
+        response_builder
+            .body(axum::body::Body::from(body))
+            .map_err(|err| {
+                JsonrpcHandler::f_err("Error while building forwarded jsonrpc response", &err)
+            })
     }
 
     pub async fn forward_jrpc(
@@ -177,7 +174,7 @@ impl JsonrpcHandler {
         // TODO: better error handling
         let body = result.into_body();
 
-        let body = hyper::body::to_bytes(body)
+        let body = axum::body::to_bytes(body, usize::MAX)
             .await
             .map_err(|e| JsonrpcHandler::h_err("Could not read body of jsonrpc response", &e))?;
 
@@ -202,18 +199,27 @@ impl JsonrpcHandler {
     }
 }
 
-#[async_trait::async_trait]
-impl router::Handler for JsonrpcHandler {
-    fn get_matcher(&self) -> &dyn router::matcher::Matcher {
-        &*self.matcher
+impl JsonrpcHandler {
+    pub fn add_route(self: Box<Self>, router: axum::Router) -> axum::Router {
+        let path = self.path.split('?').next().unwrap_or(&self.path).to_owned();
+        let handler: std::sync::Arc<Self> = self.into();
+        let jsonrpc_router = axum::Router::new()
+            .route(&path, axum::routing::any(handle_axum))
+            .route_layer(tower_http::timeout::TimeoutLayer::with_status_code(
+                http::StatusCode::REQUEST_TIMEOUT,
+                std::time::Duration::from_secs(10),
+            ))
+            .with_state(handler);
+
+        router.merge(jsonrpc_router)
     }
 
-    async fn handle(
+    pub async fn handle(
         &self,
-        request: hyper::Request<hyper::Body>,
-    ) -> Result<hyper::Response<hyper::Body>, router::RouterError> {
+        request: hyper::Request<axum::body::Body>,
+    ) -> Result<hyper::Response<axum::body::Body>, router::RouterError> {
         let (parts, body) = request.into_parts();
-        let body = hyper::body::to_bytes(body)
+        let body = axum::body::to_bytes(body, usize::MAX)
             .await
             .map_err(|e| JsonrpcHandler::h_err("Could not read body of jsonrpc request", &e))?;
 
@@ -238,7 +244,9 @@ impl router::Handler for JsonrpcHandler {
                     hyper::Response::builder()
                         .status(200)
                         .header("content-type", "application/json")
-                        .body(hyper::Body::from(serde_json::to_string(&response).unwrap()))
+                        .body(axum::body::Body::from(
+                            serde_json::to_string(&response).unwrap(),
+                        ))
                         .unwrap()
                 });
             }
@@ -247,16 +255,38 @@ impl router::Handler for JsonrpcHandler {
         self.forward(parts, body).await
     }
 
-    fn get_timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(10)
+    fn error(error: router::RouterError) -> hyper::Response<axum::body::Body> {
+        let (status, message) = match error {
+            router::RouterError::ForwardingError(message) => (502, message),
+            router::RouterError::HandlerError(status, message) => (status, message),
+            router::RouterError::InvalidRequest(message) => (400, message),
+            router::RouterError::MethodNotAllowed => (405, String::from("Method Not Allowed")),
+            router::RouterError::NotFound => (404, String::from("Not Found")),
+        };
+
+        hyper::Response::builder()
+            .status(status)
+            .header("content-type", "text/plain")
+            .body(axum::body::Body::from(message))
+            .unwrap()
     }
+}
+
+async fn handle_axum(
+    axum::extract::State(handler): axum::extract::State<std::sync::Arc<JsonrpcHandler>>,
+    request: hyper::Request<axum::body::Body>,
+) -> hyper::Response<axum::body::Body> {
+    handler
+        .handle(request)
+        .await
+        .unwrap_or_else(JsonrpcHandler::error)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::handlers::jsonrpc::JsonrpcOverloader;
-    use router::Handler;
     use test_log::test;
+    use tower::ServiceExt;
 
     struct MockOverloader {}
 
@@ -289,14 +319,20 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")
-            .body(hyper::Body::from(r#"{"method":"Not.Found"}"#))
+            .body(axum::body::Body::from(r#"{"method":"Not.Found"}"#))
             .unwrap();
 
         let (parts, body) = jrpc.handle(req).await.unwrap().into_parts();
 
         assert_eq!(200, parts.status);
 
-        let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
+        let body = String::from_utf8(
+            axum::body::to_bytes(body, usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
 
         assert_eq!("a post body", body);
     }
@@ -308,7 +344,7 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")
-            .body(hyper::Body::from(r#"invalidjson"#))
+            .body(axum::body::Body::from(r#"invalidjson"#))
             .unwrap();
 
         let error = jrpc.handle(req).await.unwrap_err();
@@ -330,7 +366,7 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")
-            .body(hyper::Body::from(
+            .body(axum::body::Body::from(
                 r#"{"method":"A.Method","params":{"akey":"a value"}}"#,
             ))
             .unwrap();
@@ -339,8 +375,37 @@ mod tests {
 
         assert_eq!(200, parts.status);
 
-        let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
+        let body = String::from_utf8(
+            axum::body::to_bytes(body, usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
 
+        assert_eq!(r#"{"jsonrpc":"2.0","result":null,"id":1}"#, body);
+    }
+
+    #[test(tokio::test)]
+    async fn it_serves_requests_through_axum() {
+        let handler = crate::handlers::jsonrpc::JsonrpcHandler::builder()
+            .add_overloader("A.Method", Box::from(MockOverloader {}))
+            .build();
+        let router = handler.add_route(axum::Router::new());
+        let request = hyper::Request::builder()
+            .uri("/jsonrpc")
+            .method("POST")
+            .body(axum::body::Body::from(
+                r#"{"method":"A.Method","params":{"key":"value"}}"#,
+            ))
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+        assert_eq!(200, response.status());
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         assert_eq!(r#"{"jsonrpc":"2.0","result":null,"id":1}"#, body);
     }
 
@@ -367,7 +432,7 @@ mod tests {
         let req = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")
-            .body(hyper::Body::empty())
+            .body(axum::body::Body::empty())
             .unwrap();
 
         let (parts, _) = req.into_parts();

@@ -92,56 +92,41 @@ fn fixture(#[default("test")] test_name: &str, #[default(8080)] port: u16) -> Te
 #[tokio::test]
 #[allow(unused_variables)]
 async fn it_allows_saving_files(#[with("files", 8079)] fixture: TestFixture) {
-    let request = hyper::Request::builder()
-        .uri(format!("http://127.0.0.1:{}/files/testfile.txt", 8079))
-        .method("PUT")
-        .body(hyper::Body::from("Fake content"))
-        .unwrap();
-
-    let response = hyper::Client::new()
-        .request(request)
+    let client = reqwest::Client::new();
+    let response = client
+        .put(format!("http://127.0.0.1:{}/files/testfile.txt", 8079))
+        .body("Fake content")
+        .send()
         .await
         .expect("Error while sending PUT file request");
 
-    let (parts, _) = response.into_parts();
+    assert_eq!(201, response.status());
 
-    assert_eq!(201, parts.status);
-
-    let request = hyper::Request::builder()
-        .uri(format!("http://127.0.0.1:{}/files/testfile.txt", 8079))
-        .method("GET")
-        .body(hyper::Body::empty())
-        .unwrap();
-
-    let response = hyper::Client::new()
-        .request(request)
+    let response = client
+        .get(format!("http://127.0.0.1:{}/files/testfile.txt", 8079))
+        .send()
         .await
         .expect("Error while sending GET file request");
 
-    let (parts, body) = response.into_parts();
-    let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
 
-    assert_eq!(200, parts.status);
+    assert_eq!(200, status);
     assert_eq!("Fake content", body.as_str());
 
-    let request = hyper::Request::builder()
-        .uri(format!(
+    let response = client
+        .get(format!(
             "http://127.0.0.1:{}/file-versions/testfile.txt",
             8079
         ))
-        .method("GET")
-        .body(hyper::Body::empty())
-        .unwrap();
-
-    let response = hyper::Client::new()
-        .request(request)
+        .send()
         .await
         .expect("Error while sending GET file request");
 
-    let (parts, body) = response.into_parts();
-    let body = String::from_utf8(hyper::body::to_bytes(body).await.unwrap().to_vec()).unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
 
-    assert_eq!(200, parts.status);
+    assert_eq!(200, status);
     println!("{}", body);
     let re = regex::Regex::new(r#"^\[\{"timestamp":"[^"]+","address":"127.0.0.1","entry":\{"type":"Creation","version":0,"hash":"X5DLkAP39ZbbRCA79GreR1pKSQNtCJ2iUIugi4/Xpb8"}}]$"#).unwrap();
     assert!(re.is_match(&body));
@@ -191,17 +176,12 @@ async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
         .mount(&fixture.kodi_mock)
         .await;
 
-    let request = hyper::Request::builder()
-        .uri(format!("http://127.0.0.1:{}/jsonrpc", 8078))
-        .method("POST")
-        .body(hyper::Body::from(request))
-        .unwrap();
-
-    let response = hyper::Client::new()
-        .request(request)
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{}/jsonrpc", 8078))
+        .body(request)
+        .send()
         .await
         .expect("Error while sending POST volume request");
 
-    let (parts, _) = response.into_parts();
-    assert_eq!(200, parts.status);
+    assert_eq!(200, response.status());
 }

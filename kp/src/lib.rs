@@ -8,22 +8,11 @@ mod handlers;
 
 use std::str::FromStr;
 
-fn register_handlers_kp(
-    configuration: &configuration::ProxyConfiguration,
-    router: &mut router::Router,
-) {
-    let avreceiver = avreceiver::get_avreceiver(&configuration.receiver);
-    let cec_interface = cec::get_cec_connection(&configuration.cec);
-
-    router
-        .add_handler(handlers::jsonrpc::get_jrpc_handler(
-            &configuration.jrpc,
-            avreceiver.clone(),
-            cec_interface.clone(),
-        ))
-        .add_handlers(files::get_file_handlers(&configuration.file.root_path))
-        .add_handlers(handlers::cec::get_cec_handlers(cec_interface.clone()))
-        .add_handlers(handlers::avreceiver::get_handlers(avreceiver.clone()));
+pub(crate) fn reqwest_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Failed to build HTTP client")
 }
 
 pub async fn serve_kp(
@@ -40,8 +29,19 @@ pub async fn serve_kp(
         Err(e) => log::warn!("Failed to register server in Avahi: {:?}", e),
     }
 
-    router::serve(addr, exit_channel, |router| {
-        register_handlers_kp(configuration, router)
-    })
-    .await;
+    let avreceiver = avreceiver::get_avreceiver(&configuration.receiver);
+    let cec_interface = cec::get_cec_connection(&configuration.cec);
+    let axum_router = handlers::jsonrpc::add_routes(
+        axum::Router::new(),
+        &configuration.jrpc,
+        avreceiver.clone(),
+        cec_interface.clone(),
+    );
+    let axum_router = handlers::cec::add_routes(
+        handlers::avreceiver::add_routes(axum_router, avreceiver),
+        cec_interface.clone(),
+    );
+    let axum_router = files::add_routes(axum_router, &configuration.file.root_path);
+
+    router::serve(addr, exit_channel, axum_router).await;
 }

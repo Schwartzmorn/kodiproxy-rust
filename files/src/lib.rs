@@ -9,17 +9,6 @@ fn map_error<E: std::fmt::Debug>(e: &E, msg: &str, error_code: u16) -> router::R
     router::HandlerError(error_code, format!("{}: {:?}", msg, e))
 }
 
-fn get_matcher<T>(method: T) -> Box<dyn router::matcher::Matcher>
-where
-    hyper::Method: std::convert::TryFrom<T>,
-{
-    router::matcher::builder()
-        .regex_path("^/files/")
-        .with_method(method)
-        .build()
-        .unwrap()
-}
-
 pub fn get_version_info_from_headers(
     headers: &http::HeaderMap,
 ) -> (Option<i32>, chrono::DateTime<chrono::Utc>) {
@@ -65,6 +54,12 @@ pub fn get_path_and_name_from_uri(
     uri: &http::Uri,
 ) -> Result<(String, String), router::RouterError> {
     let full_path = get_path_from_uri(uri)?;
+    get_path_and_name_from_path(full_path)
+}
+
+pub(crate) fn get_path_and_name_from_path(
+    full_path: &str,
+) -> Result<(String, String), router::RouterError> {
     let full_path = std::path::PathBuf::from(full_path);
     let file_path = full_path
         .parent()
@@ -77,41 +72,18 @@ pub fn get_path_and_name_from_uri(
     Ok((file_path.into(), file_name.into()))
 }
 
-pub fn get_file_handlers(sqlite_path: &std::path::PathBuf) -> Vec<Box<dyn router::Handler>> {
+fn get_file_repo(
+    sqlite_path: &std::path::Path,
+) -> std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>> {
     let file_repo = std::sync::Arc::new(std::sync::Mutex::new(
         crate::db::FilesDB::new(sqlite_path).unwrap(),
     ));
-    ::log::info!("Initializing file repository in {:?}", &sqlite_path);
-    vec![
-        Box::from(handlers::DeleteFileHandler {
-            file_repo: file_repo.clone(),
-            matcher: get_matcher(&hyper::Method::DELETE),
-        }),
-        Box::from(handlers::GetFileHandler {
-            file_repo: file_repo.clone(),
-            matcher: get_matcher(&hyper::Method::GET),
-        }),
-        Box::from(handlers::GetFileHandler {
-            file_repo: file_repo.clone(),
-            matcher: get_matcher(&hyper::Method::HEAD),
-        }),
-        Box::from(handlers::MoveFileHandler {
-            file_repo: file_repo.clone(),
-            matcher: get_matcher("MOVE"),
-        }),
-        Box::from(handlers::PutFileHandler {
-            file_repo: file_repo.clone(),
-            matcher: get_matcher(&hyper::Method::PUT),
-        }),
-        Box::from(handlers::FileVersionsHandler {
-            file_repo: file_repo.clone(),
-            matcher: router::matcher::builder()
-                .regex_path("^/file-versions/")
-                .with_method(&hyper::Method::GET)
-                .build()
-                .unwrap(),
-        }),
-    ]
+    ::log::info!("Initializing file repository in {:?}", sqlite_path);
+    file_repo
+}
+
+pub fn add_routes(router: axum::Router, sqlite_path: &std::path::Path) -> axum::Router {
+    handlers::add_routes(router, get_file_repo(sqlite_path))
 }
 
 #[cfg(test)]

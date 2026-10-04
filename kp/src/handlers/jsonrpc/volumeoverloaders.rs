@@ -227,7 +227,12 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCGetProperties {
 
             let (volume_props, other_props) = futures::join!(
                 self.get_volume_properties(&volume_properties),
-                JRPCGetProperties::get_other_properties(parts, &json_request, handler, other_properties)
+                JRPCGetProperties::get_other_properties(
+                    parts,
+                    &json_request,
+                    handler,
+                    other_properties
+                )
             );
 
             let mut other_props = other_props?;
@@ -273,7 +278,7 @@ mod tests {
         let (parts, _) = hyper::Request::builder()
             .method("POST")
             .uri("https://localhost:8080/jsonrpc")
-            .body(hyper::Body::empty())
+            .body(axum::body::Body::empty())
             .unwrap()
             .into_parts();
         parts

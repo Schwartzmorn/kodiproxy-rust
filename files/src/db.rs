@@ -288,7 +288,7 @@ impl FilesDB {
             "Starting creation transaction for file {}/{} with hash {} and version {:?}",
             file_path,
             file_name,
-            &hash,
+            hash,
             file_version
         );
 
@@ -450,7 +450,9 @@ impl FilesDB {
         let history = self
             .get_history_inner(file_path, file_name)
             .map_err(|error| super::map_error(&error, "Failed to retrieve history", 500));
-        if let Ok(log) = &history && log.entries.is_empty() {
+        if let Ok(log) = &history
+            && log.entries.is_empty()
+        {
             return Err(router::RouterError::NotFound);
         }
         history
