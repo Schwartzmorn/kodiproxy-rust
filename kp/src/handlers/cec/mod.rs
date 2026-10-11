@@ -1,3 +1,3 @@
 mod handlers;
 
-pub use handlers::add_routes;
+pub use handlers::get_router;

@@ -47,6 +47,13 @@ pub struct ServerConfiguration {
     pub host: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VtunerConfiguration {
+    pub stations_file: Option<std::path::PathBuf>,
+    pub cache_path: std::path::PathBuf,
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct ProxyConfiguration {
     #[serde(default)]
@@ -61,6 +68,8 @@ pub struct ProxyConfiguration {
     pub receiver: AVReceiverConfiguration,
     #[serde(default)]
     pub server: ServerConfiguration,
+    #[serde(default)]
+    pub vtuner: VtunerConfiguration,
 }
 
 impl std::default::Default for CECConfiguration {
@@ -114,6 +123,15 @@ impl std::default::Default for ServerConfiguration {
         }
     }
 }
+
+impl std::default::Default for VtunerConfiguration {
+    fn default() -> Self {
+        VtunerConfiguration {
+            stations_file: None,
+            cache_path: vtuner_default_cache_path(),
+        }
+    }
+}
 fn cec_default_version() -> String {
     String::from("4.0.4")
 }
@@ -144,6 +162,10 @@ fn av_default_target() -> String {
 
 fn server_default_host() -> String {
     String::from("127.0.0.1:8079")
+}
+
+fn vtuner_default_cache_path() -> std::path::PathBuf {
+    std::path::PathBuf::from("/var/cache/kp/vtuner")
 }
 
 fn deserialize_level<'de, D>(deserializer: D) -> Result<log::LevelFilter, D::Error>
@@ -180,8 +202,32 @@ mod test {
     #[test]
     fn it_has_a_default_configuration() {
         let json = r#"{}"#;
-        let _configuration: ProxyConfiguration =
+        let configuration: ProxyConfiguration =
             serde_json::from_str(json).expect("Could not build a default configuration");
+        assert!(configuration.vtuner.stations_file.is_none());
+        assert_eq!(
+            std::path::PathBuf::from("/var/cache/kp/vtuner"),
+            configuration.vtuner.cache_path
+        );
+    }
+
+    #[test]
+    fn it_decodes_partial_vtuner_configuration() {
+        let json = r#"{"vtuner":{"stationsFile":"stations.yml"}}"#;
+        let configuration: ProxyConfiguration = serde_json::from_str(json).unwrap();
+
+        assert_eq!(
+            Some(std::path::PathBuf::from("stations.yml")),
+            configuration.vtuner.stations_file
+        );
+        assert_eq!(
+            std::path::PathBuf::from("/var/cache/kp/vtuner"),
+            configuration.vtuner.cache_path
+        );
+
+        let serialized = serde_json::to_value(configuration).unwrap();
+        assert_eq!(serialized["vtuner"]["stationsFile"], "stations.yml");
+        assert_eq!(serialized["vtuner"]["cachePath"], "/var/cache/kp/vtuner");
     }
 
     #[test]

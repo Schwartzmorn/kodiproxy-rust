@@ -18,5 +18,9 @@
   },
   "server": {
     "host": "[::]:%PORT%"
+  },
+  "vtuner": {
+    "cachePath": "/var/cache/kp/vtuner",
+    "stationsFile": null
   }
 }

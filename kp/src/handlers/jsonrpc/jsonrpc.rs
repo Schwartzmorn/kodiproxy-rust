@@ -200,18 +200,16 @@ impl JsonrpcHandler {
 }
 
 impl JsonrpcHandler {
-    pub fn add_route(self: Box<Self>, router: axum::Router) -> axum::Router {
+    pub fn get_router(self: Box<Self>) -> axum::Router {
         let path = self.path.split('?').next().unwrap_or(&self.path).to_owned();
         let handler: std::sync::Arc<Self> = self.into();
-        let jsonrpc_router = axum::Router::new()
+        axum::Router::new()
             .route(&path, axum::routing::any(handle_axum))
             .route_layer(tower_http::timeout::TimeoutLayer::with_status_code(
                 http::StatusCode::REQUEST_TIMEOUT,
                 std::time::Duration::from_secs(10),
             ))
-            .with_state(handler);
-
-        router.merge(jsonrpc_router)
+            .with_state(handler)
     }
 
     pub async fn handle(
@@ -391,7 +389,7 @@ mod tests {
         let handler = crate::handlers::jsonrpc::JsonrpcHandler::builder()
             .add_overloader("A.Method", Box::from(MockOverloader {}))
             .build();
-        let router = handler.add_route(axum::Router::new());
+        let router = handler.get_router();
         let request = hyper::Request::builder()
             .uri("/jsonrpc")
             .method("POST")

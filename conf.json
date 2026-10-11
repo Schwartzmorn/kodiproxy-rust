@@ -19,5 +19,9 @@
   },
   "server": {
     "host": "[::]:8079"
+  },
+  "vtuner": {
+    "cachePath": "/var/cache/kp/vtuner",
+    "stationsFile": null
   }
 }

@@ -9,17 +9,15 @@ use tower_http::timeout::TimeoutLayer;
 
 type AVReceiver = std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>;
 
-pub fn add_routes(router: Router, receiver: AVReceiver) -> Router {
-    let avreceiver_router = Router::new()
+pub fn get_router(receiver: AVReceiver) -> Router {
+    Router::new()
         .route("/volume", get(handle_volume))
         .route("/power", get(handle_power))
         .route_layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             std::time::Duration::from_secs(10),
         ))
-        .with_state(receiver);
-
-    router.nest("/avreceiver", avreceiver_router)
+        .with_state(receiver)
 }
 
 async fn handle_volume(
@@ -136,11 +134,8 @@ mod tests {
             .times(2)
             .returning(|| (25, false));
 
-        let router = super::add_routes(axum::Router::new(), std::sync::Arc::new(receiver_mock));
-        for uri in [
-            "/avreceiver/volume?volume=25",
-            "/avreceiver/volume?volume=increment",
-        ] {
+        let router = super::get_router(std::sync::Arc::new(receiver_mock));
+        for uri in ["/volume?volume=25", "/volume?volume=increment"] {
             let request = hyper::Request::builder()
                 .uri(uri)
                 .body(axum::body::Body::empty())
@@ -163,9 +158,9 @@ mod tests {
             .times(1)
             .returning(|| true);
 
-        let router = super::add_routes(axum::Router::new(), std::sync::Arc::new(receiver_mock));
+        let router = super::get_router(std::sync::Arc::new(receiver_mock));
         let request = hyper::Request::builder()
-            .uri("/avreceiver/power?power=on")
+            .uri("/power?power=on")
             .body(axum::body::Body::empty())
             .unwrap();
 
@@ -175,12 +170,10 @@ mod tests {
 
     #[tokio::test]
     async fn it_rejects_unknown_volume_parameters() {
-        let router = super::add_routes(
-            axum::Router::new(),
-            std::sync::Arc::new(crate::avreceiver::MockAVReceiver::new()),
-        );
+        let router =
+            super::get_router(std::sync::Arc::new(crate::avreceiver::MockAVReceiver::new()));
         let request = hyper::Request::builder()
-            .uri("/avreceiver/volume?unknown=value")
+            .uri("/volume?unknown=value")
             .body(axum::body::Body::empty())
             .unwrap();
 

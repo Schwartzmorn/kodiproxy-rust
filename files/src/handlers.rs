@@ -2,8 +2,8 @@ use std::convert::TryInto;
 
 type FileRepo = std::sync::Arc<std::sync::Mutex<crate::db::FilesDB>>;
 
-pub fn add_routes(router: axum::Router, file_repo: FileRepo) -> axum::Router {
-    let files_router = axum::Router::new()
+pub fn get_files_router(file_repo: FileRepo) -> axum::Router {
+    axum::Router::new()
         .route(
             "/{*path}",
             axum::routing::any(move_file)
@@ -16,18 +16,17 @@ pub fn add_routes(router: axum::Router, file_repo: FileRepo) -> axum::Router {
             http::StatusCode::REQUEST_TIMEOUT,
             std::time::Duration::from_secs(1),
         ))
-        .with_state(file_repo.clone());
-    let versions_router = axum::Router::new()
+        .with_state(file_repo)
+}
+
+pub fn get_history_router(file_repo: FileRepo) -> axum::Router {
+    axum::Router::new()
         .route("/{*path}", axum::routing::get(file_versions))
         .route_layer(tower_http::timeout::TimeoutLayer::with_status_code(
             http::StatusCode::REQUEST_TIMEOUT,
             std::time::Duration::from_secs(1),
         ))
-        .with_state(file_repo);
-
-    router
-        .nest("/files", files_router)
-        .nest("/file-versions", versions_router)
+        .with_state(file_repo)
 }
 
 fn error_response(error: router::RouterError) -> hyper::Response<axum::body::Body> {

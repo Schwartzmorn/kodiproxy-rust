@@ -1,5 +1,3 @@
-#![allow(clippy::double_must_use)]
-
 pub mod client;
 pub mod db;
 use std::str::FromStr;

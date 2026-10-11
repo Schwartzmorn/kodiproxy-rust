@@ -1,5 +1,3 @@
-#![allow(clippy::double_must_use)]
-
 pub mod db;
 pub mod handlers;
 pub mod log;
@@ -82,8 +80,12 @@ fn get_file_repo(
     file_repo
 }
 
-pub fn add_routes(router: axum::Router, sqlite_path: &std::path::Path) -> axum::Router {
-    handlers::add_routes(router, get_file_repo(sqlite_path))
+pub fn get_routers(sqlite_path: &std::path::Path) -> (axum::Router, axum::Router) {
+    let file_repo = get_file_repo(sqlite_path);
+    (
+        handlers::get_files_router(file_repo.clone()),
+        handlers::get_history_router(file_repo),
+    )
 }
 
 #[cfg(test)]

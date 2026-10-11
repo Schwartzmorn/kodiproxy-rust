@@ -1,5 +1,3 @@
-#![allow(clippy::double_must_use)]
-
 mod exit;
 
 #[derive(Debug, PartialEq)]

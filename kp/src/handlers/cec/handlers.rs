@@ -13,17 +13,15 @@ use crate::cec::CECError;
 
 type CecConnection = std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>;
 
-pub fn add_routes(router: Router, connection: CecConnection) -> Router {
-    let cec_router = Router::new()
+pub fn get_router(connection: CecConnection) -> Router {
+    Router::new()
         .route("/power-on", get(power_on))
         .route("/standby", get(standby))
         .route_layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             std::time::Duration::from_secs(5),
         ))
-        .with_state(connection);
-
-    router.nest("/cec", cec_router)
+        .with_state(connection)
 }
 
 fn parse_address(uri: &Uri) -> Result<crate::cec::CECLogicalAddress, CECError> {
@@ -111,9 +109,9 @@ mod tests {
             .return_const(Ok(()));
         let connection: super::CecConnection =
             std::sync::Arc::new(std::sync::Mutex::new(connection));
-        let router = super::add_routes(axum::Router::new(), connection);
+        let router = super::get_router(connection);
         let request = hyper::Request::builder()
-            .uri("/cec/power-on?device=TV")
+            .uri("/power-on?device=TV")
             .body(axum::body::Body::empty())
             .unwrap();
 
@@ -123,12 +121,11 @@ mod tests {
 
     #[tokio::test]
     async fn it_rejects_an_invalid_device() {
-        let router = super::add_routes(
-            axum::Router::new(),
-            std::sync::Arc::new(std::sync::Mutex::new(crate::cec::MockCECInterface::new())),
-        );
+        let router = super::get_router(std::sync::Arc::new(std::sync::Mutex::new(
+            crate::cec::MockCECInterface::new(),
+        )));
         let request = hyper::Request::builder()
-            .uri("/cec/standby?device=invalid")
+            .uri("/standby?device=invalid")
             .body(axum::body::Body::empty())
             .unwrap();
 

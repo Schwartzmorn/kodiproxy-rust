@@ -127,10 +127,17 @@ function setup_file_repo {
     sudo chown -R kp:kp $FILE_REPOSITORY_PATH
 }
 
+# Sets up writable storage for vTuner station icons
+function setup_vtuner_cache {
+    sudo mkdir -p /var/cache/kp/vtuner/icons
+    sudo chown -R kp:kp /var/cache/kp/vtuner
+}
+
 # Do all the stuff
 build
 create_user
 setup_file_repo
+setup_vtuner_cache
 get_settings
 stop_systemd_service
 install_lib $CUR_DIR $LIB_PATH

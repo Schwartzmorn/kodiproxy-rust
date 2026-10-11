@@ -1,5 +1,3 @@
-#![allow(clippy::double_must_use)]
-
 mod avreceiver;
 mod cec;
 pub mod configuration;
@@ -31,17 +29,26 @@ pub async fn serve_kp(
 
     let avreceiver = avreceiver::get_avreceiver(&configuration.receiver);
     let cec_interface = cec::get_cec_connection(&configuration.cec);
-    let axum_router = handlers::jsonrpc::add_routes(
-        axum::Router::new(),
-        &configuration.jrpc,
-        avreceiver.clone(),
-        cec_interface.clone(),
-    );
-    let axum_router = handlers::cec::add_routes(
-        handlers::avreceiver::add_routes(axum_router, avreceiver),
-        cec_interface.clone(),
-    );
-    let axum_router = files::add_routes(axum_router, &configuration.file.root_path);
 
-    router::serve(addr, exit_channel, axum_router).await;
+    let (files_router, history_router) = files::get_routers(&configuration.file.root_path);
+
+    let router = axum::Router::new()
+        .nest(
+            "/avreceiver",
+            handlers::avreceiver::get_router(avreceiver.clone()),
+        )
+        .nest("/cec", handlers::cec::get_router(cec_interface.clone()))
+        .nest(
+            "/vtuner",
+            handlers::vtuner::get_router(&configuration.vtuner),
+        )
+        .nest("/files", files_router)
+        .nest("/file-versions", history_router)
+        .merge(handlers::jsonrpc::get_router(
+            &configuration.jrpc,
+            avreceiver,
+            cec_interface,
+        ));
+
+    router::serve(addr, exit_channel, router).await;
 }

@@ -185,3 +185,47 @@ async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
 
     assert_eq!(200, response.status());
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn it_mounts_vtuner_alongside_existing_file_routes(
+    #[with("vtuner", 8077)] fixture: TestFixture,
+) {
+    let _ = &fixture;
+    let client = reqwest::Client::new();
+    let base_url = "http://127.0.0.1:8077";
+
+    let response = client
+        .get(format!("{base_url}/vtuner/setupapp/?token=0"))
+        .send()
+        .await
+        .expect("Error while requesting the vTuner token");
+    assert_eq!(200, response.status());
+    assert_eq!(
+        "<EncryptedToken>0000000000000000</EncryptedToken>",
+        response.text().await.unwrap()
+    );
+
+    let response = client
+        .get(format!("{base_url}/setupapp/?token=0"))
+        .send()
+        .await
+        .expect("Error while checking the unprefixed setupapp path");
+    assert_eq!(404, response.status());
+
+    let response = client
+        .put(format!("{base_url}/files/composed-router.txt"))
+        .body("file route still mounted")
+        .send()
+        .await
+        .expect("Error while saving a file through the composed router");
+    assert_eq!(201, response.status());
+
+    let response = client
+        .get(format!("{base_url}/files/composed-router.txt"))
+        .send()
+        .await
+        .expect("Error while reading a file through the composed router");
+    assert_eq!(200, response.status());
+    assert_eq!("file route still mounted", response.text().await.unwrap());
+}

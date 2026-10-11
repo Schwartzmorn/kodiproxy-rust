@@ -7,8 +7,7 @@ mod jsonrpc;
 mod poweroverloaders;
 mod volumeoverloaders;
 
-pub fn add_routes(
-    router: axum::Router,
+pub fn get_router(
     configuration: &crate::configuration::JRPCConfiguration,
     avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
     cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
@@ -36,5 +35,5 @@ pub fn add_routes(
             JRPCShutdown::new(avreceiver.clone(), cec_interface.clone()),
         );
     }
-    builder.build().add_route(router)
+    builder.build().get_router()
 }
