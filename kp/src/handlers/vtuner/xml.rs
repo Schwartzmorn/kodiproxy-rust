@@ -95,14 +95,14 @@ struct XmlListOfItems<'a> {
     #[serde(rename = "Item")]
     items: &'a [Item],
 }
-fn serialize_navigation_url<S>(url: &String, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_navigation_url<S>(url: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     serializer.serialize_str(&with_vtuner_parameter(url))
 }
 
-fn serialize_station_url<S>(url: &String, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_station_url<S>(url: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

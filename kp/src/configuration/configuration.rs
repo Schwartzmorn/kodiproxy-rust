@@ -54,7 +54,7 @@ pub struct VtunerConfiguration {
     pub cache_path: std::path::PathBuf,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
 pub struct ProxyConfiguration {
     #[serde(default)]
     pub cec: CECConfiguration,

@@ -17,7 +17,6 @@ pkg-config = { workspace = true }
 
 [dependencies]
 axum = { workspace = true }
-async-std = { workspace = true }
 async-trait = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 dbus = { workspace = true }
@@ -28,17 +27,15 @@ futures = { workspace = true }
 http = { workspace = true }
 hyper = { workspace = true }
 image = { workspace = true }
-lazy_static = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 md5 = "0.7"
+parking_lot = { workspace = true }
 quick-xml = { workspace = true, features = ["serialize"] }
-regex = { workspace = true }
 reqwest = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serde_urlencoded = { workspace = true }
 serde_yaml = "0.9"
 tokio = { workspace = true, features = ["full"] }
 tower-http = { workspace = true }
@@ -47,6 +44,7 @@ url = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
+regex = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true }
 wiremock = { workspace = true }

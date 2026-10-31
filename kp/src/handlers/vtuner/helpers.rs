@@ -1,5 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
+use axum::response::{IntoResponse, Response};
+use http::{HeaderMap, StatusCode, header};
+
+use crate::handlers::vtuner::xml::ListOfItems;
+
 pub(super) fn station_id_prefix(id: &str) -> Option<&str> {
     station_id_parts(id).map(|(prefix, _)| prefix)
 }
@@ -119,6 +124,37 @@ fn first_parameter(parameters: &HashMap<String, String>, names: &[&str]) -> Opti
     names
         .iter()
         .find_map(|name| parameters.get(*name)?.parse::<usize>().ok())
+}
+
+pub(super) fn render_list(list: ListOfItems) -> Response {
+    match list.to_xml() {
+        Ok(xml) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+            xml,
+        )
+            .into_response(),
+        Err(error) => {
+            log::error!("Failed to serialize vTuner XML: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+pub(super) fn request_origin(uri: &axum::http::Uri, headers: &HeaderMap) -> (String, String) {
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| uri.scheme_str())
+        .unwrap_or("http")
+        .to_owned();
+    let host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| uri.authority().map(|authority| authority.as_str()))
+        .unwrap_or("localhost")
+        .to_owned();
+    (scheme, host)
 }
 
 #[cfg(test)]

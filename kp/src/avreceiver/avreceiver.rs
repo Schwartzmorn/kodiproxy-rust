@@ -63,6 +63,7 @@ impl AVReceiverBuilder {
     /// Consumes the builder and build the [AVReceiver](crate::avreceiver::AVReceiver)
     pub fn build(self) -> AVReceiver {
         AVReceiver {
+            client: crate::reqwest_client(),
             scheme: self.scheme,
             authority: self.authority,
             desired_input: self.desired_input,
@@ -128,6 +129,7 @@ static CMD_VOLUME: &str = "formiPhoneAppVolume.xml?1+";
 
 /// Minimal interface to the M-CR510 av receiver needed by the kodi proxy
 pub struct AVReceiver {
+    client: reqwest::Client,
     scheme: String,
     authority: String,
     desired_input: String,
@@ -157,7 +159,8 @@ impl AVReceiver {
         expect_body: bool,
     ) -> Result<Item, router::RouterError> {
         let url = format!("{}://{}/goform/{}", self.scheme, self.authority, cmd);
-        let response = crate::reqwest_client()
+        let response = self
+            .client
             .get(url)
             .version(http::Version::HTTP_11)
             .send()
@@ -223,11 +226,7 @@ impl AVReceiver {
         (volume + self.min_volume).round()
     }
 
-    fn error<T: std::fmt::Display + 'static>(
-        msg: &str,
-        cmd: &String,
-        err: T,
-    ) -> router::RouterError {
+    fn error<T: std::fmt::Display + 'static>(msg: &str, cmd: &str, err: T) -> router::RouterError {
         let msg = format!("{} '{}': [{}]", msg, cmd, err);
         log::warn!("{}", msg);
         router::HandlerError(502, msg)
@@ -261,7 +260,7 @@ impl AVReceiverInterface for AVReceiver {
                 if nr_of_retries == 0 {
                     return false;
                 }
-                async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 is_input_ok = self.set_source().await;
                 nr_of_retries -= 1;
             }

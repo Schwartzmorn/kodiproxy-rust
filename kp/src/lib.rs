@@ -28,7 +28,7 @@ pub async fn serve_kp(
     }
 
     let avreceiver = avreceiver::get_avreceiver(&configuration.receiver);
-    let cec_interface = cec::get_cec_connection(&configuration.cec);
+    let cec_interface = cec::get_cec_connection(&configuration.cec).await;
 
     let (files_router, history_router) = files::get_routers(&configuration.file.root_path);
 
@@ -47,8 +47,14 @@ pub async fn serve_kp(
         .merge(handlers::jsonrpc::get_router(
             &configuration.jrpc,
             avreceiver,
-            cec_interface,
+            cec_interface.clone(),
         ));
 
     router::serve(addr, exit_channel, router).await;
+    if let Err(error) = tokio::task::spawn_blocking(move || drop(cec_interface)).await {
+        log::warn!(
+            "Failed to clean up CEC connection on blocking thread: {:?}",
+            error
+        );
+    }
 }

@@ -10,7 +10,7 @@ mod volumeoverloaders;
 pub fn get_router(
     configuration: &crate::configuration::JRPCConfiguration,
     avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
-    cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
+    cec_interface: std::sync::Arc<parking_lot::Mutex<dyn crate::cec::CECInterface>>,
 ) -> axum::Router {
     let mut builder = jsonrpc::JsonrpcHandler::builder()
         .with_url(&configuration.target)

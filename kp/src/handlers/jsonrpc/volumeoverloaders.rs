@@ -33,7 +33,7 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             serde_json::Value::Object(params) => params.get("volume"),
             _ => None,
         });
-        let request = requested_volume
+        let volume_request = requested_volume
             .and_then(|volume| match volume {
                 serde_json::Value::Number(volume) => volume
                     .as_f64()
@@ -55,19 +55,16 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
             )))?;
 
         // We also want to unmute Kodi as it sometimes mutes itself
-        let query_unumte = crate::handlers::jsonrpc::JRPCQuery::new(
+        let id = json_request.id();
+        let query_unmute = crate::handlers::jsonrpc::JRPCQuery::new(
             String::from("Application.SetMute"),
-            Some(serde_json::json!({
-                "mute": serde_json::Value::from(false)
-            })),
-            json_request.id(),
+            Some(serde_json::json!({"mute": false})),
+            id.clone(),
         );
         let query_sound_max = crate::handlers::jsonrpc::JRPCQuery::new(
             String::from("Application.SetVolume"),
-            Some(serde_json::json!({
-                "volume": 100
-            })),
-            json_request.id(),
+            Some(serde_json::json!({"volume": 100})),
+            id.clone(),
         );
         let mut parts_clone = http::request::Builder::new()
             .method(parts.method.clone())
@@ -79,14 +76,14 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCSetVolume {
         let (parts_clone, _) = parts_clone.body(()).unwrap().into_parts();
 
         let (volume, _, _) = futures::join!(
-            request,
-            handler.forward_jrpc(parts, query_unumte),
+            volume_request,
+            handler.forward_jrpc(parts, query_unmute),
             handler.forward_jrpc(parts_clone, query_sound_max)
         );
 
         Ok(crate::handlers::jsonrpc::JRPCResponse::new(
             Some(serde_json::json!(volume)),
-            json_request.id(),
+            id,
         ))
     }
 }
@@ -475,7 +472,7 @@ mod tests {
             Some(serde_json::json!({
                 "properties": ["muted", "volume", "aProperty1", "aProperty2"]
             })),
-            Some(42),
+            Some(serde_json::json!(42)),
         );
 
         let result = jrpc

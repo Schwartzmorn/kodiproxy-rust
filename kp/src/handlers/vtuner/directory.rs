@@ -1,10 +1,12 @@
 use axum::{
     Router,
     extract::{OriginalUri, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
 };
+
+use crate::handlers::vtuner::helpers::{render_list, request_origin};
 
 use super::{
     helpers::absolute_url_segments,
@@ -171,22 +173,6 @@ fn directory_item(scheme: &str, host: &str, title: &str, path: &[&str], count: u
     }
 }
 
-pub(super) fn request_origin(uri: &axum::http::Uri, headers: &HeaderMap) -> (String, String) {
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| uri.scheme_str())
-        .unwrap_or("http")
-        .to_owned();
-    let host = headers
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| uri.authority().map(|authority| authority.as_str()))
-        .unwrap_or("localhost")
-        .to_owned();
-    (scheme, host)
-}
-
 fn title_case(value: &str) -> String {
     value
         .split_whitespace()
@@ -203,21 +189,6 @@ fn capitalize(value: &str) -> String {
             .chain(characters.flat_map(char::to_lowercase))
             .collect(),
         None => String::new(),
-    }
-}
-
-pub(super) fn render_list(list: ListOfItems) -> Response {
-    match list.to_xml() {
-        Ok(xml) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
-            xml,
-        )
-            .into_response(),
-        Err(error) => {
-            log::error!("Failed to serialize vTuner XML: {error}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
     }
 }
 

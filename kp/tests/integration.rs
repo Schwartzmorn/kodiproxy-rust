@@ -188,6 +188,37 @@ async fn it_imbues_jrpc_queries(#[with("jrpc", 8078)] fixture: TestFixture) {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn it_returns_500_with_jsonrpc_error_for_overloader_failure(
+    #[with("jrpc-error", 8076)] fixture: TestFixture,
+) {
+    let _ = &fixture;
+    let response = reqwest::Client::new()
+        .post("http://127.0.0.1:8076/jsonrpc")
+        .body(r#"{"jsonrpc":"2.0","method":"Application.SetVolume","params":{"volume":"invalid"},"id":7}"#)
+        .send()
+        .await
+        .expect("Error while sending POST invalid volume request");
+
+    assert_eq!(500, response.status());
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Overloader error response was not valid JSON");
+    assert_eq!(
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32602,
+                "message": "Invalid volume parameter"
+            },
+            "id": 7
+        }),
+        body
+    );
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn it_mounts_vtuner_alongside_existing_file_routes(
     #[with("vtuner", 8077)] fixture: TestFixture,
 ) {

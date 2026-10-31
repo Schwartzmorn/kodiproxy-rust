@@ -8,9 +8,10 @@ use axum::{
     routing::get,
 };
 
+use crate::handlers::vtuner::helpers::request_origin;
+
 use super::{
-    directory::{render_list, request_origin},
-    helpers::{absolute_url_segments, my_station_id, rewrite_https_to_http},
+    helpers::{absolute_url_segments, my_station_id, render_list, rewrite_https_to_http},
     xml::{Item, ListOfItems},
 };
 

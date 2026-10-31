@@ -3,17 +3,17 @@ static EMPTY_ARRAY: [&[u8]; 0] = [];
 static AVAHI_BUS: &str = "org.freedesktop.Avahi";
 static AVAHI_ENTRY_INTERFACE: &str = "org.freedesktop.Avahi.EntryGroup";
 
-pub struct AvahiConnection<'a> {
+pub struct AvahiConnection {
     dbus_connection: dbus::blocking::Connection,
-    dbus_path: dbus::Path<'a>,
+    dbus_path: dbus::Path<'static>,
 }
 
-impl<'a> AvahiConnection<'a> {
-    pub fn new(port: u16) -> Result<AvahiConnection<'a>, dbus::Error> {
+impl AvahiConnection {
+    pub fn new(port: u16) -> Result<AvahiConnection, dbus::Error> {
         log::info!("Opening connection with Dbus");
         let dbus_connection = dbus::blocking::Connection::new_system()?;
 
-        let (dbus_path,): (dbus::Path,) = dbus_connection
+        let (dbus_path,): (dbus::Path<'static>,) = dbus_connection
             .with_proxy(AVAHI_BUS, "/", std::time::Duration::from_millis(2000))
             .method_call("org.freedesktop.Avahi.Server", "EntryGroupNew", ())?;
 
@@ -52,7 +52,7 @@ impl<'a> AvahiConnection<'a> {
     }
 }
 
-impl<'a> Drop for AvahiConnection<'a> {
+impl Drop for AvahiConnection {
     fn drop(&mut self) {
         log::info!("Freeing Avahi entry");
         let res: Result<(), dbus::Error> = self

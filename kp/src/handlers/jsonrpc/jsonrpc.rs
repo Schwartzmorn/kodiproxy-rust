@@ -25,6 +25,7 @@ pub struct JsonrpcHandlerBuilder {
 /// Dispatches the different methods to [JsonrpcOverloader](crate::jsonrpc::JsonrpcOverloader) if
 /// one is registered to the method, otherwise forwards the query to the actual jsonrpc server
 pub struct JsonrpcHandler {
+    client: reqwest::Client,
     scheme: String,
     authority: String,
     overloaders: std::collections::HashMap<String, Box<dyn JsonrpcOverloader>>,
@@ -36,27 +37,42 @@ pub struct JRPCQuery {
     jsonrpc: Option<String>,
     method: String,
     params: Option<serde_json::Value>,
-    id: Option<i32>,
+    id: Option<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct JRPCResponse {
     jsonrpc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<serde_json::Value>,
-    id: Option<i32>,
+    id: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<JRPCError>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct JRPCError {
+    code: i32,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
 }
 
 impl JRPCQuery {
     pub fn params(&self) -> Option<&serde_json::Value> {
         self.params.as_ref()
     }
-    pub fn id(&self) -> Option<i32> {
+    pub fn id(&self) -> Option<serde_json::Value> {
         self.id.to_owned()
     }
     pub fn method(&self) -> &String {
         &self.method
     }
-    pub fn new(method: String, params: Option<serde_json::Value>, id: Option<i32>) -> JRPCQuery {
+    pub fn new(
+        method: String,
+        params: Option<serde_json::Value>,
+        id: Option<serde_json::Value>,
+    ) -> JRPCQuery {
         JRPCQuery {
             jsonrpc: Some(String::from("2.0")),
             method,
@@ -67,11 +83,36 @@ impl JRPCQuery {
 }
 
 impl JRPCResponse {
-    pub fn new(result: Option<serde_json::Value>, id: Option<i32>) -> JRPCResponse {
+    pub fn new(result: Option<serde_json::Value>, id: Option<serde_json::Value>) -> JRPCResponse {
         JRPCResponse {
             jsonrpc: Some(String::from("2.0")),
-            result,
+            result: Some(result.unwrap_or(serde_json::Value::Null)),
             id,
+            error: None,
+        }
+    }
+
+    fn from_router_error(
+        error: router::RouterError,
+        id: Option<serde_json::Value>,
+    ) -> JRPCResponse {
+        let (code, message) = match error {
+            router::RouterError::InvalidRequest(message) => (-32602, message),
+            router::RouterError::ForwardingError(message)
+            | router::RouterError::HandlerError(_, message) => (-32603, message),
+            router::RouterError::MethodNotAllowed => (-32600, String::from("Method not allowed")),
+            router::RouterError::NotFound => (-32601, String::from("Method not found")),
+        };
+
+        JRPCResponse {
+            jsonrpc: Some(String::from("2.0")),
+            result: None,
+            id,
+            error: Some(JRPCError {
+                code,
+                message,
+                data: None,
+            }),
         }
     }
 
@@ -107,6 +148,7 @@ impl JsonrpcHandlerBuilder {
     /// Builds the [JsonrpcHandler](crate::jsonrpc::JsonrpcHandler)
     pub fn build(self) -> Box<JsonrpcHandler> {
         Box::from(JsonrpcHandler {
+            client: crate::reqwest_client(),
             scheme: self.scheme,
             authority: self.authority,
             overloaders: self.overloaders,
@@ -139,7 +181,8 @@ impl JsonrpcHandler {
         // Headers from another request may have a stale content length.
         headers.remove(http::header::CONTENT_LENGTH);
 
-        let response = crate::reqwest_client()
+        let response = self
+            .client
             .request(parts.method, url)
             .version(parts.version)
             .headers(headers)
@@ -230,23 +273,21 @@ impl JsonrpcHandler {
 
             if let Some(overloader) = self.overloaders.get(json.method()) {
                 log::info!("Overloading method '{}'", json.method());
-                if json.params().is_none() {
-                    return Err(JsonrpcHandler::h_err(
-                        "Jsonrpc request did not contain any parameter",
-                        json.method(),
-                    ));
-                }
-                // TODO improve this with better error handling
-                // TODO improve deserialization
-                return overloader.handle(parts, json, self).await.map(|response| {
-                    hyper::Response::builder()
-                        .status(200)
-                        .header("content-type", "application/json")
-                        .body(axum::body::Body::from(
-                            serde_json::to_string(&response).unwrap(),
-                        ))
-                        .unwrap()
-                });
+                let id = json.id();
+                let (response, status) = match overloader.handle(parts, json, self).await {
+                    Ok(response) => (response, http::StatusCode::OK),
+                    Err(error) => (
+                        JRPCResponse::from_router_error(error, id),
+                        http::StatusCode::INTERNAL_SERVER_ERROR,
+                    ),
+                };
+                return Ok(hyper::Response::builder()
+                    .status(status)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&response).unwrap(),
+                    ))
+                    .expect("Cannot fail"));
             }
         }
         // when in doubt, forward
@@ -296,17 +337,35 @@ mod tests {
             _body: crate::handlers::jsonrpc::JRPCQuery,
             _handler: &super::JsonrpcHandler,
         ) -> Result<super::JRPCResponse, router::RouterError> {
-            Ok(super::JRPCResponse::new(None, Some(1)))
+            Ok(super::JRPCResponse::new(None, Some(serde_json::json!(1))))
+        }
+    }
+
+    struct ErrorOverloader {}
+
+    #[async_trait::async_trait]
+    impl JsonrpcOverloader for ErrorOverloader {
+        async fn handle(
+            &self,
+            _parts: hyper::http::request::Parts,
+            _body: crate::handlers::jsonrpc::JRPCQuery,
+            _handler: &super::JsonrpcHandler,
+        ) -> Result<super::JRPCResponse, router::RouterError> {
+            Err(router::RouterError::InvalidRequest(String::from(
+                "Invalid volume parameter",
+            )))
         }
     }
 
     #[test(tokio::test)]
-    async fn it_forwards_when_no_overloader() {
+    async fn it_returns_upstream_jsonrpc_errors() {
         let mock_server: wiremock::MockServer = wiremock::MockServer::start().await;
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/jsonrpc"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes("a post body"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(
+                r#"{"jsonrpc":"2.0","error":{"code":-32601,"message":"Method not found"},"id":1}"#,
+            ))
             .mount(&mock_server)
             .await;
 
@@ -332,7 +391,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!("a post body", body);
+        assert_eq!(
+            r#"{"jsonrpc":"2.0","error":{"code":-32601,"message":"Method not found"},"id":1}"#,
+            body
+        );
     }
 
     #[test(tokio::test)]
@@ -408,6 +470,47 @@ mod tests {
     }
 
     #[test(tokio::test)]
+    async fn it_returns_overloader_errors_as_jsonrpc_errors() {
+        let handler = crate::handlers::jsonrpc::JsonrpcHandler::builder()
+            .add_overloader("A.Method", Box::from(ErrorOverloader {}))
+            .build();
+        let router = handler.get_router();
+        let request = hyper::Request::builder()
+            .uri("/jsonrpc")
+            .method("POST")
+            .body(axum::body::Body::from(
+                r#"{"jsonrpc":"2.0","method":"A.Method","id":42}"#,
+            ))
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+        assert_eq!(500, response.status());
+        assert_eq!(
+            Some("application/json"),
+            response
+                .headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+        );
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32602,
+                    "message": "Invalid volume parameter"
+                },
+                "id": 42
+            }),
+            response
+        );
+    }
+
+    #[test(tokio::test)]
     async fn it_forwards_jrpc() {
         let mock_server: wiremock::MockServer = wiremock::MockServer::start().await;
 
@@ -438,7 +541,7 @@ mod tests {
         let query = super::JRPCQuery::new(
             String::from("a.method"),
             Some(serde_json::json!({"akey": "a value"})),
-            Some(42),
+            Some(serde_json::json!(42)),
         );
 
         let res = jrpc.forward_jrpc(parts, query).await.unwrap();

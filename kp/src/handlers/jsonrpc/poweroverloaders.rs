@@ -2,7 +2,7 @@ pub struct JRPCGetSystemProperties {}
 
 pub struct JRPCShutdown {
     avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
-    cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
+    cec_interface: std::sync::Arc<parking_lot::Mutex<dyn crate::cec::CECInterface>>,
 }
 
 impl JRPCGetSystemProperties {
@@ -16,7 +16,7 @@ impl JRPCShutdown {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(
         avreceiver: std::sync::Arc<dyn crate::avreceiver::AVReceiverInterface>,
-        cec_interface: std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>,
+        cec_interface: std::sync::Arc<parking_lot::Mutex<dyn crate::cec::CECInterface>>,
     ) -> Box<dyn crate::handlers::jsonrpc::JsonrpcOverloader> {
         Box::new(JRPCShutdown {
             avreceiver,
@@ -66,24 +66,24 @@ impl crate::handlers::jsonrpc::JsonrpcOverloader for JRPCShutdown {
     ) -> Result<super::jsonrpc::JRPCResponse, router::RouterError> {
         let interface = self.cec_interface.clone();
         let async_cec = move || async move {
-            let res = interface
-                .lock()
-                .map(|mut e| e.standby(crate::cec::CECLogicalAddress::TV));
-            if let Ok(Ok(())) = res {
-                Ok(())
-            } else {
-                Err(router::HandlerError(
+            match tokio::task::spawn_blocking(move || {
+                interface.lock().standby(crate::cec::CECLogicalAddress::TV)
+            })
+            .await
+            {
+                Ok(Ok(())) => Ok(()),
+                _ => Err(router::HandlerError(
                     500,
                     "Failed to switch off CEC".to_string(),
-                ))
+                )),
             }
         };
         let (_av_power, cec_status) = futures::join!(self.avreceiver.set_power(false), async_cec());
         cec_status?;
-        return Ok(crate::handlers::jsonrpc::JRPCResponse::new(
+        Ok(crate::handlers::jsonrpc::JRPCResponse::new(
             None,
             json_request.id(),
-        ));
+        ))
     }
 }
 
@@ -113,7 +113,7 @@ mod test {
             Some(serde_json::json!({
                 "properties": ["canshutdown", "cansuspend", "canhibernate", "canreboot"]
             })),
-            Some(42),
+            Some(serde_json::json!(42)),
         );
 
         let result = jrpc
@@ -152,14 +152,14 @@ mod test {
             .with(mockall::predicate::eq(crate::cec::CECLogicalAddress::TV))
             .times(1)
             .returning(|_| Ok(()));
-        let mock_cec = std::sync::Arc::new(std::sync::Mutex::new(mock_cec));
+        let mock_cec = std::sync::Arc::new(parking_lot::Mutex::new(mock_cec));
 
         let jrpc = super::JRPCShutdown::new(mock_receiver, mock_cec);
 
         let request = crate::handlers::jsonrpc::JRPCQuery::new(
             String::from("Application.Quit"),
             None,
-            Some(42),
+            Some(serde_json::json!(42)),
         );
 
         jrpc.handle(parts, request, jrpc_handler.as_ref())

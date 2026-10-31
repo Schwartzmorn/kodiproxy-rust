@@ -11,7 +11,7 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::cec::CECError;
 
-type CecConnection = std::sync::Arc<std::sync::Mutex<dyn crate::cec::CECInterface>>;
+type CecConnection = std::sync::Arc<parking_lot::Mutex<dyn crate::cec::CECInterface>>;
 
 pub fn get_router(connection: CecConnection) -> Router {
     Router::new()
@@ -42,19 +42,15 @@ async fn power_on(
         }
     };
 
-    let mut connection = match connection.lock() {
-        Ok(connection) => connection,
-        Err(_) => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Failed to acquire lock on CEC connection",
-            )
-                .into_response();
-        }
-    };
+    let result = tokio::task::spawn_blocking(move || connection.lock().power_on(address)).await;
 
-    match connection.power_on(address) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+    match result {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(error)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to turn on device: {:?}", error),
+        )
+            .into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to turn on device: {:?}", error),
@@ -74,19 +70,15 @@ async fn standby(
         }
     };
 
-    let mut connection = match connection.lock() {
-        Ok(connection) => connection,
-        Err(_) => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Failed to acquire lock on CEC connection",
-            )
-                .into_response();
-        }
-    };
+    let result = tokio::task::spawn_blocking(move || connection.lock().standby(address)).await;
 
-    match connection.standby(address) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+    match result {
+        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(error)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed put device in standby: {:?}", error),
+        )
+            .into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed put device in standby: {:?}", error),
@@ -108,7 +100,7 @@ mod tests {
             .times(1)
             .return_const(Ok(()));
         let connection: super::CecConnection =
-            std::sync::Arc::new(std::sync::Mutex::new(connection));
+            std::sync::Arc::new(parking_lot::Mutex::new(connection));
         let router = super::get_router(connection);
         let request = hyper::Request::builder()
             .uri("/power-on?device=TV")
@@ -121,7 +113,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_rejects_an_invalid_device() {
-        let router = super::get_router(std::sync::Arc::new(std::sync::Mutex::new(
+        let router = super::get_router(std::sync::Arc::new(parking_lot::Mutex::new(
             crate::cec::MockCECInterface::new(),
         )));
         let request = hyper::Request::builder()

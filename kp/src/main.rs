@@ -1,6 +1,5 @@
 use clap::Parser;
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(name = "KodiProxy")]
 #[command(author = "Schwartzmorn")]
@@ -21,12 +20,11 @@ struct Args {
 fn get_configuration(path: &Option<String>) -> kp::configuration::ProxyConfiguration {
     match path {
         Some(path) => {
-            let configuration = std::fs::read(path).expect("Configuration file not found");
-            let configuration =
-                String::from_utf8(configuration).expect("Could not decode the configuration file");
+            let configuration = std::fs::read_to_string(path)
+                .expect("Could not find or decode the configuration file");
             serde_json::from_str(configuration.as_str()).expect("Invalid configuration file")
         }
-        None => serde_json::from_str("{}").unwrap(),
+        None => kp::configuration::ProxyConfiguration::default(),
     }
 }
 
@@ -61,7 +59,7 @@ async fn main() {
 
     setup_logging(&configuration.logging);
 
-    if let &Some(path) = &args.dump_configuration.as_deref() {
+    if let Some(path) = &args.dump_configuration.as_deref() {
         dump_configuration(path, configuration);
         return;
     }
